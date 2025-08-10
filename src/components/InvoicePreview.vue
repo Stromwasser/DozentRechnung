@@ -379,4 +379,33 @@ function formatMoney(v: number) {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* --- Mobile/Safari fix: prevent layout from being cut on narrow screens --- */
+.page {
+  overflow-x: auto; /* enable horizontal scrolling instead of cutting content */
+}
+
+@media (max-width: 768px) {
+  .a4 {
+    width: 100%; /* use full width instead of fixed 210mm */
+    min-height: auto; /* adjust height to fit content */
+    padding: 16px; /* softer padding on mobile */
+  }
+  .top {
+    flex-wrap: wrap; /* allow title block to wrap to next line */
+    gap: 12px;
+  }
+  .title-stack {
+    min-width: 0; /* remove fixed minimum width on the right */
+    text-align: left; /* could be right-aligned if preferred */
+  }
+}
+
+/* Keep original A4 geometry when printing */
+@media print {
+  .a4 {
+    width: 210mm;
+    min-height: 297mm;
+    padding: 12mm 14mm 30mm;
+  }
+}
 </style>
