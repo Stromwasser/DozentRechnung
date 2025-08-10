@@ -4,7 +4,7 @@
       <h2>Deine Rechnungen</h2>
       <div class="actions">
         <button class="btn" @click="reload" :disabled="loading">
-          {{ loading ? 'Refreshing…' : 'Refresh' }}
+          🔄 {{ loading ? 'Refreshing…' : 'Refresh invoices' }}
         </button>
         <router-link class="btn" :to="{ name: 'invoice-new' }">+ Neue Rechnung</router-link>
       </div>
