@@ -11,7 +11,7 @@ onMounted(async () => {
   } = await supabase.auth.getSession()
 
   if (session) {
-    router.push('/invoices')
+    router.push('/invoice')
   } else {
     router.push('/auth')
   }
