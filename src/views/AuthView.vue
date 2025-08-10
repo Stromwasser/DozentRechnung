@@ -55,7 +55,7 @@ const register = async () => {
     email: email.value,
     password: password.value,
     options: {
-      emailRedirectTo: 'http://localhost:5173/invoice',
+      emailRedirectTo: '${window.location.origin}/invoice',
     },
   })
 
