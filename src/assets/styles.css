@@ -1,0 +1,135 @@
+body {
+  margin: 0;
+  padding: 0;
+  font-family: sans-serif;
+  background: linear-gradient(to bottom, #ebf8ff, #ffffff);
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: start;
+  padding-top: 2rem;
+}
+
+.invoice-form {
+  max-width: 700px;
+  width: 100%;
+  padding: 2rem;
+  background: white;
+  border-radius: 10px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.invoice-form section {
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  background-color: #f9fbfc;
+}
+
+.invoice-form h3 {
+  margin-bottom: 1rem;
+  font-size: 1.1rem;
+  color: #333;
+}
+
+.form-group {
+  margin-bottom: 0.75rem;
+  gap: 0.5rem;
+}
+
+.invoice-form input {
+  width: 100%;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.95rem;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  box-sizing: border-box;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1rem;
+  font-size: 0.95rem;
+}
+
+th,
+td {
+  border: 1px solid #ccc;
+  padding: 0.3rem 0.5rem;
+  text-align: left;
+}
+
+td input {
+  width: 100%;
+  padding: 0.3rem 0.5rem;
+  font-size: 0.9rem;
+  border: 1px solid #bbb;
+  border-radius: 4px;
+  box-sizing: border-box;
+}
+
+button {
+  margin-top: 1rem;
+  padding: 0.5rem 1rem;
+  background-color: #2c4de2;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.95rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+button:hover {
+  background-color: #2c5282;
+}
+
+button[type='button'] {
+  background-color: #3182ce;
+}
+
+button[type='button']:hover {
+  background-color: #2b6cb0;
+}
+
+button:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
+}
+
+td button {
+  background-color: #e53e3e;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 0.3rem 0.6rem;
+  cursor: pointer;
+}
+
+td button:hover {
+  background-color: #c53030;
+}
+
+.button-row {
+  display: flex;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+.form-grid {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.5rem 1rem;
+  align-items: center;
+}
+.form-grid input {
+  border: 1px solid #ccc;
+  padding: 0.5rem;
+  border-radius: 0.5rem; /* ← скругление углов */
+  width: 100%;
+  box-sizing: border-box;
+}
