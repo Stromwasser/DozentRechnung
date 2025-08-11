@@ -1,64 +1,94 @@
-# dozent-rechnungen
+Dozent Invoicing App
+A web application for freelance lecturers of integration courses in Germany to easily create, manage, and send invoices to clients.
+Built with Vue 3 + Vite, Supabase (Auth, Database, RLS), and Node.js.
 
-This template should help get you started developing with Vue 3 in Vite.
+Features
+User Authentication — Secure sign-up and login via Supabase Auth.
 
-## Recommended IDE Setup
+Profile Management — Save lecturer details for automatic use in invoices.
 
-[VSCode](https://code.visualstudio.com/) + [Volar](https://marketplace.visualstudio.com/items?itemName=Vue.volar) (and disable Vetur).
+Client Management — Create and store client information for reuse.
 
-## Type Support for `.vue` Imports in TS
+Invoice Creation — Fill in invoice details including:
 
-TypeScript cannot handle type information for `.vue` imports by default, so we replace the `tsc` CLI with `vue-tsc` for type checking. In editors, we need [Volar](https://marketplace.visualstudio.com/items?itemName=Vue.volar) to make the TypeScript language service aware of `.vue` types.
+Provider and client info
 
-## Customize configuration
+Invoice number auto-generation (YYYY-MM-XXX format)
 
-See [Vite Configuration Reference](https://vite.dev/config/).
+Lesson list with date, hours, and hourly rate
 
-## Project Setup
+Itemized Lessons — Save multiple lesson entries linked to a single invoice.
 
-```sh
+PDF Export — Generate invoices that match a predefined template.
+
+Data Security — Row-Level Security (RLS) ensures each user can access only their own data.
+
+Tech Stack
+Frontend: Vue 3, Vite, TypeScript
+
+Backend & Database: Supabase (PostgreSQL + Auth + Storage)
+
+Deployment: Vercel
+
+Other: TailwindCSS for styling
+
+Project Structure
+bash
+Kopieren
+Bearbeiten
+src/
+components/ # Reusable Vue components
+views/ # Main application pages
+lib/ # Supabase client setup
+router/ # Vue Router configuration
+assets/ # Static files
+Setup
+Clone the repository
+
+bash
+Kopieren
+Bearbeiten
+git clone https://github.com/your-username/dozent-rechnungen.git
+cd dozent-rechnungen
+Install dependencies
+
+bash
+Kopieren
+Bearbeiten
 npm install
-```
+Configure environment variables
+Create a .env file in the root directory:
 
-### Compile and Hot-Reload for Development
+ini
+Kopieren
+Bearbeiten
+VITE_SUPABASE_URL=your_supabase_url
+VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+Run locally
 
-```sh
+bash
+Kopieren
+Bearbeiten
 npm run dev
-```
+Build for production
 
-### Type-Check, Compile and Minify for Production
-
-```sh
+bash
+Kopieren
+Bearbeiten
 npm run build
-```
+Deployment
+The project is deployed on Vercel.
 
-### Run Unit Tests with [Vitest](https://vitest.dev/)
+On every push to main, Vercel automatically rebuilds and redeploys the application.
 
-```sh
-npm run test:unit
-```
+Future Improvements
+Implement client selection from saved entries when creating invoices
 
-### Run End-to-End Tests with [Playwright](https://playwright.dev)
+Improve PDF styling for mobile-friendly exports
 
-```sh
-# Install browsers for the first run
-npx playwright install
+Add analytics dashboard for tracking hours and revenue
 
-# When testing on CI, must build the project first
-npm run build
+Implement multi-language support
 
-# Runs the end-to-end tests
-npm run test:e2e
-# Runs the tests only on Chromium
-npm run test:e2e -- --project=chromium
-# Runs the tests of a specific file
-npm run test:e2e -- tests/example.spec.ts
-# Runs the tests in debug mode
-npm run test:e2e -- --debug
-```
-
-### Lint with [ESLint](https://eslint.org/)
-
-```sh
-npm run lint
-```
+License
+This project is licensed under the MIT License.
