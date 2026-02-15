@@ -30,7 +30,7 @@
           <td>{{ inv.client_name || '—' }}</td>
           <td class="num">{{ fmtMoney(inv.total) }}</td>
           <td>
-            <a v-if="inv.pdf_url" :href="inv.pdf_url" target="_blank" rel="noopener">Öffnen</a>
+            <a v-if="inv.pdf_signed_url" :href="inv.pdf_signed_url" target="_blank" rel="noopener">Öffnen</a>
             <span v-else>—</span>
           </td>
           <td>
@@ -51,13 +51,20 @@ import { ref, onMounted } from 'vue'
 import { supabase } from '@/lib/supabaseClient'
 
 /** Raw row as returned by Supabase; `clients` may be an object or an array */
+type ClientRaw = {
+  name?: string | null
+  company_line1?: string | null
+  company_line2?: string | null
+  company_line3?: string | null
+}
+
 type InvoiceRowRaw = {
   id: string
   number: string
   date: string
   total: number
-  pdf_url: string | null
-  clients?: { name: string | null } | { name: string | null }[] | null
+  pdf_signed_url: string | null
+  clients?: ClientRaw | ClientRaw[] | null
 }
 
 /** UI row shape used in the table */
@@ -66,7 +73,7 @@ type InvoiceRow = {
   number: string
   date: string
   total: number
-  pdf_url: string | null
+  pdf_signed_url: string | null
   client_name?: string | null
 }
 
@@ -98,7 +105,7 @@ async function fetchInvoices(userId: string): Promise<void> {
 
   const { data, error } = await supabase
     .from('invoices')
-    .select('id, number, date, total, pdf_url, clients(name)')
+    .select('id, number, date, total, pdf_signed_url, clients(name, company_line1, company_line2, company_line3)')
     .eq('user_id', userId)
     .order('date', { ascending: false })
 
@@ -111,16 +118,19 @@ async function fetchInvoices(userId: string): Promise<void> {
 
   const rows = (data ?? []) as unknown as InvoiceRowRaw[]
   invoices.value = rows.map((r): InvoiceRow => {
-    const clientName = Array.isArray(r.clients)
-      ? (r.clients[0]?.name ?? null)
-      : (r.clients?.name ?? null)
+    const c = Array.isArray(r.clients) ? r.clients[0] : r.clients
+    const clientName = c
+      ? c.name ||
+        [c.company_line1, c.company_line2, c.company_line3].filter(Boolean).join(' · ') ||
+        null
+      : null
 
     return {
       id: r.id,
       number: r.number,
       date: r.date,
       total: r.total,
-      pdf_url: r.pdf_url,
+      pdf_signed_url: r.pdf_signed_url,
       client_name: clientName,
     }
   })

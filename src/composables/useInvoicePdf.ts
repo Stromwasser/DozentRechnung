@@ -3,19 +3,28 @@ import jsPDF from 'jspdf'
 import html2canvas from 'html2canvas'
 import { supabase } from '@/lib/supabaseClient'
 
-export async function generateAndStoreInvoicePdf(opts: {
+type GenOpts = {
   userId: string
   invoiceId: string
   invoiceNumber: string
-}): Promise<{ pdfUrl: string; path: string }> {
+}
+
+type GenResult = {
+  pdfUrl: string // signed url (temporary)
+  path: string // stable storage path
+  expiresAt: string // ISO timestamp when signed url expires
+}
+
+export async function generateAndStoreInvoicePdf(opts: GenOpts): Promise<GenResult> {
   const node = document.getElementById('invoice-preview')
   if (!node) throw new Error('#invoice-preview not found')
 
   // 1) Render DOM to canvas
   const canvas = await html2canvas(node as HTMLElement, {
-    scale: 1.5, // was 2; smaller -> lighter PDF
+    scale: 1.5, // 1.5 достаточно для A4 (вес/качество)
     useCORS: true,
     backgroundColor: '#ffffff',
+    // windowWidth: node.scrollWidth, // опционально, если нужно точное соотношение
   })
   const imgData = canvas.toDataURL('image/jpeg', 0.82)
 
@@ -30,9 +39,9 @@ export async function generateAndStoreInvoicePdf(opts: {
   if (imgH <= pageH) {
     pdf.addImage(imgData, 'JPEG', 0, 0, imgW, imgH)
   } else {
-    // Multi-page support
-    let remaining = imgH
+    // Multi-page: сдвигаем исходное изображение вверх на высоту страницы
     let offsetYmm = 0
+    let remaining = imgH
     while (remaining > 0) {
       pdf.addImage(imgData, 'JPEG', 0, -offsetYmm, imgW, imgH)
       remaining -= pageH
@@ -43,31 +52,48 @@ export async function generateAndStoreInvoicePdf(opts: {
     }
   }
 
-  const blob = pdf.output('blob')
+  // Создаём Blob корректного MIME
+  const blob = new Blob([pdf.output('arraybuffer')], { type: 'application/pdf' })
 
-  // 3) Upload to Supabase Storage
-  const path = `invoices/${opts.userId}/${opts.invoiceNumber}.pdf`
-  const { error: uploadError } = await supabase.storage
-    .from('invoices')
-    .upload(path, blob, { upsert: true })
+  // 3) Upload to Supabase Storage (upsert = true, чтобы перезаписывать по номеру)
+  const safeNumber = opts.invoiceNumber.replace(/[^A-Za-z0-9._-]/g, '_')
+  const path = `invoices/${opts.userId}/${safeNumber}.pdf`
 
-  if (uploadError) throw uploadError
+  const { error: uploadError } = await supabase.storage.from('invoices').upload(path, blob, {
+    upsert: true,
+    contentType: 'application/pdf',
+  })
 
-  // 4) Get URL (signed for private bucket)
+  if (uploadError) throw new Error('PDF-Upload: ' + (uploadError.message || String(uploadError)))
+
+  // 4) Create signed URL (например, на 7 дней)
+  const expiresIn = 60 * 60 * 24 * 7 // 7 дней
   const { data: signed, error: signError } = await supabase.storage
     .from('invoices')
-    .createSignedUrl(path, 60 * 60 * 24 * 7) // valid for 7 days
+    .createSignedUrl(path, expiresIn)
 
-  if (signError) throw signError
-  const pdfUrl = signed!.signedUrl
+  if (signError || !signed?.signedUrl) {
+    throw new Error('PDF-URL: ' + (signError?.message || 'Failed to create signed URL'))
+  }
 
-  // 5) Save pdf_url to invoices
+  const now = new Date()
+  const expiresAt = new Date(now.getTime() + expiresIn * 1000).toISOString()
+  const pdfUrl = signed.signedUrl
+
+  // 5) Save path + signed url (optional) to invoices
+  // В БД хорошо иметь стабильный путь (pdf_path) — по нему можно всегда сгенерить новую ссылку.
+  // signed url можно хранить для быстрого показа, пометив срок годности.
   const { error: updateError } = await supabase
     .from('invoices')
-    .update({ pdf_url: pdfUrl })
+    .update({
+      pdf_path: path, // <-- стабильный путь в бакете
+      pdf_signed_url: pdfUrl, // <-- текущая временная ссылка (необязательно)
+      pdf_url_expires_at: expiresAt,
+      // pdf_url: null,            // если раньше было поле pdf_url — лучше больше не использовать
+    })
     .eq('id', opts.invoiceId)
 
-  if (updateError) throw updateError
+  if (updateError) throw new Error('PDF-Speichern: ' + (updateError.message || String(updateError)))
 
-  return { pdfUrl, path }
+  return { pdfUrl, path, expiresAt }
 }

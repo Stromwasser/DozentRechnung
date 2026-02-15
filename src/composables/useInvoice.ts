@@ -15,20 +15,24 @@ export interface ClientInfo {
   name: string
   addressLine1: string
   addressLine2: string
-  phone: string
-  email: string
+  phone?: string
+  email?: string
 }
 
+// ⬇️ UPDATED: item now can carry a short course tag (IK-2025-01 / BSK 192)
 export interface InvoiceItem {
   date: string
   hours: number
   rate: number
+  course?: string
 }
 
+// ⬇️ UPDATED: courseOverview (header line for PDF)
+// maps to invoices.course_overview
 export interface InvoiceForm {
   number: string
   date: string
-  courseDescription: string
+  courseOverview: string
   items: InvoiceItem[]
 }
 
@@ -57,8 +61,9 @@ export async function saveFullInvoice({
     .eq('name', client.name)
     .maybeSingle()
 
-  if (clientFetchError)
+  if (clientFetchError) {
     throw new Error('Fehler beim Abrufen des Kunden: ' + clientFetchError.message)
+  }
 
   let clientId = existingClient?.id
 
@@ -70,26 +75,28 @@ export async function saveFullInvoice({
         name: client.name,
         address_line1: client.addressLine1,
         address_line2: client.addressLine2,
-        phone: client.phone,
-        email: client.email,
+        phone: client.phone ?? null,
+        email: client.email ?? null,
       })
       .select()
       .single()
 
-    if (clientInsertError)
+    if (clientInsertError) {
       throw new Error('Fehler beim Speichern des Kunden: ' + clientInsertError.message)
+    }
     clientId = newClient.id
   }
 
-  // 2️⃣ ENSURE USER PROFILE EXISTS
+  // 2️⃣ ENSURE USER PROFILE EXISTS (create once if missing)
   const { data: existingProfile, error: profileFetchError } = await supabase
     .from('user_profile')
     .select('id')
     .eq('id', user_id)
     .maybeSingle()
 
-  if (profileFetchError)
+  if (profileFetchError) {
     throw new Error('Fehler beim Laden des Profils: ' + profileFetchError.message)
+  }
 
   if (!existingProfile) {
     const { error: profileInsertError } = await supabase.from('user_profile').insert({
@@ -104,40 +111,47 @@ export async function saveFullInvoice({
       bic: provider.bic,
     })
 
-    if (profileInsertError)
+    if (profileInsertError) {
       throw new Error('Fehler beim Speichern des Profils: ' + profileInsertError.message)
+    }
   }
 
   // 3️⃣ INSERT INVOICE
+  // NOTE: keep "client_id" because your current table uses that name.
+  // If your table uses "customer_id" instead, rename "client_id" -> "customer_id" below.
   const { data: newInvoice, error: invoiceInsertError } = await supabase
     .from('invoices')
     .insert({
       user_id,
-      client_id: clientId,
+      client_id: clientId, // <-- rename to customer_id if your schema uses that
       number: invoice.number,
       date: invoice.date,
-      course_description: invoice.courseDescription,
+      course_overview: invoice.courseOverview, // ⬅️ NEW FIELD
       total: totalAmount,
     })
     .select()
     .single()
 
-  if (invoiceInsertError)
+  if (invoiceInsertError) {
     throw new Error('Fehler beim Speichern der Rechnung: ' + invoiceInsertError.message)
+  }
 
-  // 4️⃣ INSERT INVOICE ITEMS
+  // 4️⃣ INSERT INVOICE ITEMS (with computed amount and optional course)
   const itemsToInsert = invoice.items.map((item: InvoiceItem) => ({
     invoice_id: newInvoice.id,
-    user_id,
+    user_id, // keep if your RLS expects it on invoice_items
     date: item.date,
     hours: item.hours,
     rate: item.rate,
+    amount: Number((item.hours * item.rate).toFixed(2)), // store amount explicitly
+    course: item.course ?? null, // ⬅️ NEW COLUMN
   }))
 
   const { error: itemsInsertError } = await supabase.from('invoice_items').insert(itemsToInsert)
 
-  if (itemsInsertError)
+  if (itemsInsertError) {
     throw new Error('Fehler beim Speichern der Termine: ' + itemsInsertError.message)
+  }
 
   return newInvoice.id
 }

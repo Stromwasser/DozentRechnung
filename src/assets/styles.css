@@ -133,3 +133,8 @@ td button:hover {
   width: 100%;
   box-sizing: border-box;
 }
+.your-bg {
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: contain; /* вместо cover, чтобы не резало края */
+}

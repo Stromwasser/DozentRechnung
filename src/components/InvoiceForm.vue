@@ -47,12 +47,11 @@
         <select id="client-select" v-model="selectedClientId">
           <option :value="NEW_CLIENT_VALUE">+ Neuer Kunde</option>
           <option v-for="c in clients" :key="c.id" :value="c.id">
-            {{ c.name }}
+            {{ clientDisplayName(c) }}
           </option>
         </select>
       </div>
 
-      <!-- Client fields (auto-filled when a client is selected) -->
       <div class="form-group">
         <label for="client-name">Firmenname</label>
         <input id="client-name" v-model="client.name" required />
@@ -79,8 +78,13 @@
     <section>
       <h3>🧾 Rechnung</h3>
       <div class="form-group">
-        <label for="course-desc">Kursbeschreibung</label>
-        <input id="course-desc" v-model="invoice.courseDescription" required />
+        <label for="course-overview">Kursübersicht (für Kopfzeile)</label>
+        <input
+          id="course-overview"
+          v-model="invoice.courseOverview"
+          placeholder="IK-2025-01 (und Berufssprachkurs BSK 192)"
+          required
+        />
       </div>
       <div class="form-group">
         <label for="invoice-date">Datum</label>
@@ -99,6 +103,8 @@
         <thead>
           <tr>
             <th>Datum</th>
+            <th>Kurs</th>
+            <!-- NEW -->
             <th>Stunden</th>
             <th>Stundensatz (€)</th>
             <th>Betrag (€)</th>
@@ -108,7 +114,10 @@
         <tbody>
           <tr v-for="(item, index) in invoice.items" :key="index">
             <td><input type="date" v-model="item.date" required /></td>
-            <td><input type="number" v-model.number="item.hours" min="1" required /></td>
+            <td>
+              <input v-model="item.course" placeholder="z. B. IK-2025-01 / BSK 192" />
+            </td>
+            <td><input type="number" v-model.number="item.hours" min="1" step="0.5" required /></td>
             <td><input type="number" v-model.number="item.rate" step="0.01" required /></td>
             <td>{{ (item.hours * item.rate).toFixed(2) }}</td>
             <td><button type="button" @click="removeItem(index)">❌</button></td>
@@ -171,16 +180,19 @@ type Client = {
 
 type ClientRow = {
   id: string
-  name: string
+  name: string | null
+  company_line1?: string | null
+  company_line2?: string | null
+  company_line3?: string | null
   address_line1: string | null
   address_line2: string | null
   phone: string | null
   email: string | null
 }
 
-type InvoiceItem = { date: string; hours: number; rate: number }
+type InvoiceItem = { date: string; hours: number; rate: number; course?: string }
 type Invoice = {
-  courseDescription: string
+  courseOverview: string // maps to invoices.course_overview
   date: string
   number: string
   items: InvoiceItem[]
@@ -220,11 +232,12 @@ const client = ref<Client>({
 const clients = ref<ClientRow[]>([])
 const selectedClientId = ref<string | typeof NEW_CLIENT_VALUE>(NEW_CLIENT_VALUE)
 
+const todayISO = new Date().toISOString().substring(0, 10)
 const invoice = ref<Invoice>({
-  courseDescription: 'Unterricht im Rahmen des Integrationskurses',
-  date: new Date().toISOString().substring(0, 10),
+  courseOverview: 'IK-2025-01 (und Berufssprachkurs BSK 192)',
+  date: todayISO,
   number: '',
-  items: [{ date: new Date().toISOString().substring(0, 10), hours: 5, rate: 42.23 }],
+  items: [{ date: todayISO, hours: 5, rate: 42.23, course: 'IK-2025-01' }],
 })
 
 // ---------- Helpers ----------
@@ -233,6 +246,7 @@ const addItem = () => {
     date: new Date().toISOString().substring(0, 10),
     hours: 5,
     rate: 42.23,
+    course: '',
   })
 }
 const removeItem = (index: number) => {
@@ -255,16 +269,31 @@ function hydrateProviderFromProfile(p: Partial<UserProfileRow>) {
   provider.value.bic = p.bic ?? provider.value.bic
 }
 
+/** Build display name for client dropdown (supports legacy company_line1/2/3) */
+function clientDisplayName(c: ClientRow): string {
+  if (c.name) return c.name
+  const parts = [c.company_line1, c.company_line2, c.company_line3].filter(Boolean)
+  return parts.length ? parts.join(' · ') : '(Ohne Namen)'
+}
+
 /** When dropdown changes, either clear for new client or fill with selected client */
 watch(selectedClientId, (val) => {
   if (val === NEW_CLIENT_VALUE) {
-    // New client mode: clear fields
-    client.value = { name: '', addressLine1: '', addressLine2: '', phone: '', email: '' }
+    client.value = {
+      name: '',
+      addressLine1: '',
+      addressLine2: '',
+      phone: '',
+      email: '',
+    }
     return
   }
   const found = clients.value.find((c) => c.id === val)
   if (found) {
-    client.value.name = found.name
+    client.value.name =
+      found.name ||
+      [found.company_line1, found.company_line2, found.company_line3].filter(Boolean).join(' · ') ||
+      ''
     client.value.addressLine1 = found.address_line1 ?? ''
     client.value.addressLine2 = found.address_line2 ?? ''
     client.value.phone = found.phone ?? ''
@@ -283,6 +312,10 @@ const saveInvoice = async (): Promise<void> => {
 
   try {
     // 1) Save everything to DB
+    // NOTE: saveFullInvoice should be updated to:
+    // - upsert clients with company_line1/2/3
+    // - insert invoice with course_overview
+    // - insert invoice_items with course
     const invoiceId = await saveFullInvoice({
       user,
       provider: provider.value,
@@ -305,7 +338,14 @@ const saveInvoice = async (): Promise<void> => {
     // 4) Redirect to list
     await router.push('/invoices')
   } catch (error: unknown) {
-    alert('❌ Fehler: ' + (error instanceof Error ? error.message : 'Unbekannter Fehler.'))
+    const msg =
+      error instanceof Error
+        ? error.message
+        : (error as { message?: string })?.message ??
+          (error as { error?: string })?.error ??
+          String(error)
+    console.error('Save invoice error:', error)
+    alert('❌ Fehler: ' + (msg || 'Unbekannter Fehler.'))
   }
 }
 
@@ -357,12 +397,12 @@ onMounted(async () => {
 
   if (profile) hydrateProviderFromProfile(profile as UserProfileRow)
 
-  // 3) Load clients for dropdown
+  // 3) Load clients for dropdown (include company_line1/2/3 for legacy data)
   const { data: clientRows, error: clientErr } = await supabase
     .from('clients')
-    .select('id, name, address_line1, address_line2, phone, email')
+    .select('id, name, company_line1, company_line2, company_line3, address_line1, address_line2, phone, email')
     .eq('user_id', user.id)
-    .order('name', { ascending: true })
+    .order('name', { ascending: true, nullsFirst: false })
 
   if (clientErr) {
     console.error('Failed to load clients:', clientErr.message)
@@ -370,7 +410,7 @@ onMounted(async () => {
     clients.value = (clientRows ?? []) as ClientRow[]
   }
 
-  // Optional: preselect the first client in the list (comment out if you prefer always NEW)
+  // Optional: preselect the first client in the list (or keep NEW)
   if (clients.value.length > 0) {
     selectedClientId.value = clients.value[0].id
   } else {

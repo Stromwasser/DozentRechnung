@@ -80,25 +80,32 @@ Bearbeiten
 git clone https://github.com/your-username/dozent-rechnungen.git
 cd dozent-rechnungen
 npm install
-2) Environment
-Create .env in project root:
+```
 
-ini
-Kopieren
-Bearbeiten
-VITE_SUPABASE_URL=your_supabase_url
+### 2) Environment
+
+Copy `.env.example` to `.env` and fill in your Supabase credentials:
+
+```ini
+VITE_SUPABASE_URL=https://your-project.supabase.co
 VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
-3) Run Dev
-bash
-Kopieren
-Bearbeiten
+```
+
+### 3) Run Dev
+
+```bash
 npm run dev
-4) Build
-bash
-Kopieren
-Bearbeiten
+```
+
+### 4) Build
+
+```bash
 npm run build
-🧾 Database (Supabase)
+```
+
+---
+
+## 🧾 Database (Supabase)
 Tables used / planned:
 
 Table	Purpose	Owner key
@@ -127,45 +134,47 @@ using (auth.uid() = user_id)
 with check (auth.uid() = user_id);
 Repeat analogous policies for invoice_items, clients, and user_profile with their respective owner fields.
 
-📸 Screenshots
-Put your images into docs/ and reference them here.
+## 📸 Screenshots
+
+Put your images into `docs/` and reference them here.
 
 <p align="center"> <img src="docs/screenshot-1.png" alt="Invoice Form" width="800"><br/> <em>Invoice form with auto number and lesson items</em> </p>
-🧭 Roadmap
- Save invoice_items after invoice insert
 
- Clients: create/find & assign customer_id in invoices
+---
 
- Provider profile: store lecturer data by user_id
+## 🧭 Roadmap
 
- RLS for invoice_items, clients, user_profile
+- [x] Save invoice_items after invoice insert
+- [x] Clients: create/find & assign customer_id in invoices
+- [x] Provider profile: store lecturer data by user_id
+- [ ] RLS for invoice_items, clients, user_profile
+- [x] PDF export (template-aligned) & download
+- [ ] Mobile UI polish (iOS/Android)
 
- PDF export (template-aligned) & download
+---
 
- Mobile UI polish (iOS/Android)
+## 🧪 Scripts
 
-🧪 Scripts
-bash
-Kopieren
-Bearbeiten
+```bash
 npm run dev         # start dev server
-npm run build       # type-check + build for production
+npm run build       # build for production
 npm run preview     # preview production build
 npm run test:unit   # Vitest
 npm run test:e2e    # Playwright
 npm run lint        # ESLint
 npm run format      # Prettier (src/)
-📦 Deployment (Vercel)
-Connect repository to Vercel
-
-Define environment variables:
-
-VITE_SUPABASE_URL
-
-VITE_SUPABASE_ANON_KEY
-
-Push to main → Vercel auto-builds & deploys
-
-📝 License
-MIT — feel free to use, modify, and contribute.
 ```
+
+---
+
+## 📦 Deployment (Vercel)
+
+1. Connect repository to Vercel
+2. Define environment variables: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`
+3. Push to `main` → Vercel auto-builds & deploys
+
+---
+
+## 📝 License
+
+MIT — feel free to use, modify, and contribute.

@@ -7,8 +7,12 @@
       <input v-model="profile.name" />
     </div>
     <div>
-      <label>Anschrift:</label>
-      <input v-model="profile.address" />
+      <label>Straße und Hausnummer:</label>
+      <input v-model="profile.address_line1" />
+    </div>
+    <div>
+      <label>PLZ und Stadt:</label>
+      <input v-model="profile.address_line2" />
     </div>
     <div>
       <label>Telefon:</label>
@@ -45,7 +49,8 @@ const router = useRouter()
 
 const profile = ref({
   name: '',
-  address: '',
+  address_line1: '',
+  address_line2: '',
   phone: '',
   email: '',
   tax_number: '',
