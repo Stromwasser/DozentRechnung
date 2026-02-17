@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabaseClient'
 
 const router = useRouter()
 const isLoggedIn = ref<boolean | null>(null)
+const isFirstTime = ref(false)
 
 onMounted(async () => {
   const {
@@ -13,6 +14,11 @@ onMounted(async () => {
 
   if (session) {
     isLoggedIn.value = true
+    const { count } = await supabase
+      .from('invoices')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', session.user.id)
+    isFirstTime.value = (count ?? 0) === 0
   } else {
     router.push('/auth')
   }
@@ -24,10 +30,23 @@ onMounted(async () => {
     <p class="text-gray-600">Weiterleitung…</p>
   </div>
   <div v-else class="start-page">
-    <h2>Willkommen</h2>
-    <div class="start-actions">
-      <router-link to="/invoice" class="start-btn primary">+ Neue Rechnung</router-link>
-      <router-link to="/invoices" class="start-btn">📋 Meine Rechnungen</router-link>
+    <div v-if="isFirstTime" class="onboarding">
+      <h2>Willkommen bei Dozent Rechnungen</h2>
+      <p class="onboarding-text">
+        Erstellen Sie Ihre erste Rechnung in wenigen Schritten. Füllen Sie zuerst Ihr Profil aus, dann können Sie Rechnungen erstellen.
+      </p>
+      <div class="start-actions">
+        <router-link to="/profile" class="start-btn">1. Profil ausfüllen</router-link>
+        <router-link to="/invoice" class="start-btn primary">2. Erste Rechnung erstellen</router-link>
+      </div>
+    </div>
+    <div v-else>
+      <h2>Willkommen</h2>
+      <div class="start-actions">
+        <router-link to="/dashboard" class="start-btn">📊 Dashboard</router-link>
+        <router-link to="/invoice" class="start-btn primary">+ Neue Rechnung</router-link>
+        <router-link to="/invoices" class="start-btn">📋 Meine Rechnungen</router-link>
+      </div>
     </div>
   </div>
 </template>
@@ -69,5 +88,14 @@ onMounted(async () => {
 }
 .start-btn.primary:hover {
   background: #1d4ed8;
+}
+.onboarding {
+  max-width: 400px;
+  margin: 0 auto;
+}
+.onboarding-text {
+  margin-bottom: 1.5rem;
+  color: #6b7280;
+  line-height: 1.5;
 }
 </style>

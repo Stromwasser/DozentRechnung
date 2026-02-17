@@ -1,6 +1,6 @@
 // src/router/index.ts
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
-import { supabase } from '@/lib/supabaseClient'
+import { supabase, handleExpiredSession } from '@/lib/supabaseClient'
 
 const routes: RouteRecordRaw[] = [
   { path: '/', redirect: '/start' },
@@ -14,6 +14,12 @@ const routes: RouteRecordRaw[] = [
     path: '/invoice',
     name: 'invoice-new',
     component: () => import('@/components/InvoiceForm.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/invoice/:id/regenerate',
+    name: 'invoice-regenerate',
+    component: () => import('@/views/RegenerateInvoiceView.vue'),
     meta: { requiresAuth: true },
   },
   {
@@ -55,11 +61,22 @@ const router = createRouter({
 
 // auth guard
 router.beforeEach(async (to, _from, next) => {
-  const {
-    data: { session },
-  } = await supabase.auth.getSession()
-  if (to.meta.requiresAuth && !session) next({ name: 'auth' })
-  else next()
+  try {
+    const { data: { session }, error } = await supabase.auth.getSession()
+    if (error) throw error
+    if (to.meta.requiresAuth && !session) {
+      next({ name: 'auth' })
+    } else {
+      next()
+    }
+  } catch (e) {
+    const msg = String((e as Error)?.message ?? e).toLowerCase()
+    if (msg.includes('invalidjwt') || msg.includes('exp') || msg.includes('jwt')) {
+      handleExpiredSession()
+      return
+    }
+    next()
+  }
 })
 
 export default router

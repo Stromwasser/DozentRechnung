@@ -72,6 +72,22 @@
         <label for="client-email">E-Mail</label>
         <input id="client-email" v-model="client.email" required />
       </div>
+      <details class="form-group">
+        <summary>Erweiterte Einstellungen (optional)</summary>
+        <div class="form-group">
+          <label for="client-leistung">Leistungsbeschreibung (für PDF)</label>
+          <input id="client-leistung" v-model="client.leistungsbeschreibung" placeholder="z. B. Unterricht Integrationskurs" />
+        </div>
+        <div class="form-group">
+          <label for="client-preset">Rechnungs-Preset</label>
+          <select id="client-preset" v-model="client.rechnung_preset">
+            <option value="">— Standard —</option>
+            <option value="bamf_ik">BAMF Integrationskurs</option>
+            <option value="bsk">Berufssprachkurs</option>
+            <option value="sonstige">Sonstige</option>
+          </select>
+        </div>
+      </details>
     </section>
 
     <!-- 🔹 Block 3: Rechnung Info -->
@@ -82,7 +98,7 @@
         <input
           id="course-overview"
           v-model="invoice.courseOverview"
-          placeholder="IK-2025-01 (und Berufssprachkurs BSK 192)"
+          placeholder="z. B. IK-2025-01, JIK-2025-01, BSK 192"
           required
         />
       </div>
@@ -115,7 +131,7 @@
           <tr v-for="(item, index) in invoice.items" :key="index">
             <td><input type="date" v-model="item.date" required /></td>
             <td>
-              <input v-model="item.course" placeholder="z. B. IK-2025-01 / BSK 192" />
+              <input v-model="item.course" placeholder="z. B. IK-2025-01" />
             </td>
             <td><input type="number" v-model.number="item.hours" min="1" step="0.5" required /></td>
             <td><input type="number" v-model.number="item.rate" step="0.01" required /></td>
@@ -148,7 +164,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { supabase } from '@/lib/supabaseClient'
+import { supabase, handleExpiredSession } from '@/lib/supabaseClient'
 import { saveFullInvoice } from '@/composables/useInvoice'
 import { generateAndStoreInvoicePdf } from '@/composables/useInvoicePdf'
 import InvoicePreview from '@/components/InvoicePreview.vue'
@@ -176,6 +192,10 @@ type Client = {
   addressLine2: string
   phone: string
   email: string
+  leistungsbeschreibung?: string
+  verwendungszweck?: string
+  zusatz_angaben?: string
+  rechnung_preset?: string
 }
 
 type ClientRow = {
@@ -188,6 +208,10 @@ type ClientRow = {
   address_line2: string | null
   phone: string | null
   email: string | null
+  leistungsbeschreibung?: string | null
+  verwendungszweck?: string | null
+  zusatz_angaben?: string | null
+  rechnung_preset?: string | null
 }
 
 type InvoiceItem = { date: string; hours: number; rate: number; course?: string }
@@ -227,6 +251,8 @@ const client = ref<Client>({
   addressLine2: '',
   phone: '',
   email: '',
+  leistungsbeschreibung: '',
+  rechnung_preset: '',
 })
 
 const clients = ref<ClientRow[]>([])
@@ -234,10 +260,10 @@ const selectedClientId = ref<string | typeof NEW_CLIENT_VALUE>(NEW_CLIENT_VALUE)
 
 const todayISO = new Date().toISOString().substring(0, 10)
 const invoice = ref<Invoice>({
-  courseOverview: 'IK-2025-01 (und Berufssprachkurs BSK 192)',
+  courseOverview: '',
   date: todayISO,
   number: '',
-  items: [{ date: todayISO, hours: 5, rate: 42.23, course: 'IK-2025-01' }],
+  items: [{ date: todayISO, hours: 5, rate: 42.23, course: '' }],
 })
 
 // ---------- Helpers ----------
@@ -285,6 +311,8 @@ watch(selectedClientId, (val) => {
       addressLine2: '',
       phone: '',
       email: '',
+      leistungsbeschreibung: '',
+      rechnung_preset: '',
     }
     return
   }
@@ -298,6 +326,8 @@ watch(selectedClientId, (val) => {
     client.value.addressLine2 = found.address_line2 ?? ''
     client.value.phone = found.phone ?? ''
     client.value.email = found.email ?? ''
+    client.value.leistungsbeschreibung = found.leistungsbeschreibung ?? ''
+    client.value.rechnung_preset = found.rechnung_preset ?? ''
   }
 })
 
@@ -344,6 +374,11 @@ const saveInvoice = async (): Promise<void> => {
         : (error as { message?: string })?.message ??
           (error as { error?: string })?.error ??
           String(error)
+    const msgLower = String(msg).toLowerCase()
+    if (msgLower.includes('invalidjwt') || msgLower.includes('exp') || msgLower.includes('jwt')) {
+      handleExpiredSession()
+      return
+    }
     console.error('Save invoice error:', error)
     alert('❌ Fehler: ' + (msg || 'Unbekannter Fehler.'))
   }
@@ -400,7 +435,7 @@ onMounted(async () => {
   // 3) Load clients for dropdown (include company_line1/2/3 for legacy data)
   const { data: clientRows, error: clientErr } = await supabase
     .from('clients')
-    .select('id, name, company_line1, company_line2, company_line3, address_line1, address_line2, phone, email')
+    .select('id, name, company_line1, company_line2, company_line3, address_line1, address_line2, phone, email, leistungsbeschreibung, rechnung_preset')
     .eq('user_id', user.id)
     .order('name', { ascending: true, nullsFirst: false })
 

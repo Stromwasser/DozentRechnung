@@ -35,10 +35,16 @@
       <div v-if="client.email">E-Mail {{ client.email }}</div>
     </div>
 
-    <!-- Purpose line: keep descriptive header -->
+    <!-- Purpose line: client-specific or default -->
     <div class="purpose">
-      FÜR Unterricht im Rahmen des Integrationskurses
-      <strong>{{ invoice.courseOverview }}</strong>
+      <template v-if="client.leistungsbeschreibung">
+        {{ client.leistungsbeschreibung }}
+        <strong v-if="invoice.courseOverview">{{ invoice.courseOverview }}</strong>
+      </template>
+      <template v-else>
+        FÜR Unterricht im Rahmen des Integrationskurses
+        <strong>{{ invoice.courseOverview }}</strong>
+      </template>
     </div>
 
     <!-- Items table -->
@@ -47,7 +53,7 @@
         <thead>
           <tr>
             <th class="col-date">Datum</th>
-            <th class="col-course">Kurs</th>
+            <th v-if="showCourseColumn" class="col-course">Kurs</th>
             <th class="col-hours">Stundenanzahl</th>
             <th class="col-rate">Stundensatz (€)</th>
             <th class="col-amount">Betrag (€)</th>
@@ -56,7 +62,7 @@
         <tbody>
           <tr v-for="(it, i) in itemsSorted" :key="i">
             <td>{{ formatDate(it.date) }}</td>
-            <td class="course">{{ it.course || '' }}</td>
+            <td v-if="showCourseColumn" class="course">{{ it.course || '' }}</td>
             <td class="num">{{ it.hours }}</td>
             <td class="num">{{ formatMoney(it.rate) }}</td>
             <td class="num">{{ formatMoney(it.hours * it.rate) }}</td>
@@ -65,7 +71,7 @@
         <tfoot>
           <tr class="sum">
             <td>Gesamt</td>
-            <td class="course"></td>
+            <td v-if="showCourseColumn" class="course"></td>
             <td class="num">{{ totalHours }}</td>
             <td></td>
             <td class="num total">{{ formatMoney(totalAmount) }} €</td>
@@ -78,6 +84,7 @@
     <section class="legal">
       <p>Gemäß § 19 UStG wird keine Umsatzsteuer ausgewiesen.</p>
       <p>Der Betrag kann auf das oben genannte Konto überwiesen werden.</p>
+      <p v-if="client.verwendungszweck" class="verwendungszweck"><strong>Verwendungszweck:</strong> {{ client.verwendungszweck }}</p>
     </section>
 
     <!-- Bottom footer (fixed) -->
@@ -112,6 +119,8 @@ const props = defineProps<{
   items?: InvoiceItemNew[]
   /** When true, applies print-specific styles (no margins, crisp fonts) */
   forPrint?: boolean
+  /** When true, hide Kurs column (for legacy invoices without course data) */
+  hideCourseColumn?: boolean
 }>()
 
 // Use provided items or invoice.items
@@ -131,6 +140,11 @@ const totalHours = computed<number>(() => {
 
 const totalAmount = computed<number>(() => {
   return itemsSorted.value.reduce((s, it) => s + Number((it.hours || 0) * (it.rate || 0)), 0)
+})
+
+const showCourseColumn = computed<boolean>(() => {
+  if (props.hideCourseColumn) return false
+  return baseItems.value.some((it) => (it.course || '').trim() !== '')
 })
 
 function formatDate(d: string) {
@@ -279,6 +293,10 @@ function formatMoney(v: number) {
 .legal {
   font-size: 10.5pt;
   margin-top: 10mm;
+}
+.verwendungszweck {
+  margin-top: 4mm;
+  font-weight: 500;
 }
 
 /* Fixed footer */

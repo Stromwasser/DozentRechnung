@@ -1,11 +1,31 @@
 -- Fix Storage RLS: "new row violates row-level security policy" on PDF upload
--- Run in Supabase Dashboard → SQL Editor
 -- Path format: invoices/{user_id}/{invoice_number}.pdf
+--
+-- ВАЖНО: SQL Editor выдаёт "must be owner of table objects" — storage.objects
+-- принадлежит Supabase. Используйте DASHBOARD UI (см. ниже).
 
--- Enable RLS on storage.objects (usually already enabled)
+-- ============ ВАРИАНТ 1: Через Dashboard UI (рекомендуется) ============
+-- Supabase Dashboard → Storage → Bucket "invoices" → Policies
+-- Добавьте 3 политики вручную:
+--
+-- 1) INSERT (Upload)
+--    Name: invoices_upload_own
+--    Policy: (bucket_id = 'invoices') AND ((storage.foldername(name))[2] = auth.uid()::text)
+--
+-- 2) SELECT (Read / createSignedUrl)
+--    Name: invoices_select_own
+--    Policy: (bucket_id = 'invoices') AND ((storage.foldername(name))[2] = auth.uid()::text)
+--
+-- 3) UPDATE (Upsert / overwrite)
+--    Name: invoices_update_own
+--    Policy: (bucket_id = 'invoices') AND ((storage.foldername(name))[2] = auth.uid()::text)
+--
+-- ============ ВАРИАНТ 2: SQL (только если postgres — superuser) ============
+-- ALTER USER postgres WITH SUPERUSER;  -- затем выполните блок ниже
+
+/*
 ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
 
--- Allow authenticated users to upload to their own folder (invoices/{user_id}/...)
 DROP POLICY IF EXISTS "invoices_upload_own" ON storage.objects;
 CREATE POLICY "invoices_upload_own" ON storage.objects
   FOR INSERT TO authenticated
@@ -14,7 +34,6 @@ CREATE POLICY "invoices_upload_own" ON storage.objects
     AND (storage.foldername(name))[2] = auth.uid()::text
   );
 
--- Allow authenticated users to read their own files
 DROP POLICY IF EXISTS "invoices_select_own" ON storage.objects;
 CREATE POLICY "invoices_select_own" ON storage.objects
   FOR SELECT TO authenticated
@@ -23,7 +42,6 @@ CREATE POLICY "invoices_select_own" ON storage.objects
     AND (storage.foldername(name))[2] = auth.uid()::text
   );
 
--- Allow authenticated users to update/overwrite their own files (upsert)
 DROP POLICY IF EXISTS "invoices_update_own" ON storage.objects;
 CREATE POLICY "invoices_update_own" ON storage.objects
   FOR UPDATE TO authenticated
@@ -35,3 +53,4 @@ CREATE POLICY "invoices_update_own" ON storage.objects
     bucket_id = 'invoices'
     AND (storage.foldername(name))[2] = auth.uid()::text
   );
+*/

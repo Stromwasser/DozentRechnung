@@ -17,6 +17,11 @@ export interface ClientInfo {
   addressLine2: string
   phone?: string
   email?: string
+  /** Custom description for PDF (replaces default "Unterricht im Rahmen des Integrationskurses") */
+  leistungsbeschreibung?: string
+  verwendungszweck?: string
+  zusatz_angaben?: string
+  rechnung_preset?: 'bamf_ik' | 'bsk' | 'sonstige'
 }
 
 // ⬇️ UPDATED: item now can carry a short course tag (IK-2025-01 / BSK 192)
@@ -67,6 +72,19 @@ export async function saveFullInvoice({
 
   let clientId = existingClient?.id
 
+  // Update existing client's per-client fields
+  if (clientId) {
+    await supabase
+      .from('clients')
+      .update({
+        leistungsbeschreibung: client.leistungsbeschreibung || null,
+        verwendungszweck: client.verwendungszweck || null,
+        zusatz_angaben: client.zusatz_angaben || null,
+        rechnung_preset: client.rechnung_preset || null,
+      })
+      .eq('id', clientId)
+  }
+
   if (!clientId) {
     const { data: newClient, error: clientInsertError } = await supabase
       .from('clients')
@@ -77,6 +95,10 @@ export async function saveFullInvoice({
         address_line2: client.addressLine2,
         phone: client.phone ?? null,
         email: client.email ?? null,
+        leistungsbeschreibung: client.leistungsbeschreibung ?? null,
+        verwendungszweck: client.verwendungszweck ?? null,
+        zusatz_angaben: client.zusatz_angaben ?? null,
+        rechnung_preset: client.rechnung_preset ?? null,
       })
       .select()
       .single()

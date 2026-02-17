@@ -108,10 +108,60 @@ td button {
   border-radius: 4px;
   padding: 0.3rem 0.6rem;
   cursor: pointer;
+  min-height: 44px;
 }
 
 td button:hover {
   background-color: #c53030;
+}
+
+/* Mobile: InvoiceForm table as stack */
+@media (max-width: 640px) {
+  .invoice-form {
+    padding: 1rem;
+  }
+  .invoice-form table thead {
+    display: none;
+  }
+  .invoice-form table tbody tr {
+    display: flex;
+    flex-wrap: wrap;
+    flex-direction: column;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 0.75rem;
+    margin-bottom: 0.75rem;
+    margin-top: 0;
+    background: #fff;
+  }
+  .invoice-form table tbody td {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    border: none;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid #f3f4f6;
+  }
+  .invoice-form table tbody td:last-child {
+    border-bottom: none;
+  }
+  .invoice-form table tbody td::before {
+    content: attr(data-label);
+    font-weight: 600;
+    min-width: 6rem;
+    color: #6b7280;
+    font-size: 0.875rem;
+  }
+  .invoice-form table tbody td:nth-child(1)::before { content: "Datum"; }
+  .invoice-form table tbody td:nth-child(2)::before { content: "Kurs"; }
+  .invoice-form table tbody td:nth-child(3)::before { content: "Stunden"; }
+  .invoice-form table tbody td:nth-child(4)::before { content: "Stundensatz"; }
+  .invoice-form table tbody td:nth-child(5)::before { content: "Betrag"; }
+  .invoice-form table tbody td:nth-child(6)::before { content: ""; }
+  .invoice-form button {
+    min-height: 44px;
+    padding: 0.75rem 1rem;
+  }
 }
 
 .button-row {
