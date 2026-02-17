@@ -1,4 +1,9 @@
 <template>
+  <div class="page">
+    <header v-if="invoiceId" class="form-header">
+      <router-link to="/invoices" class="btn">← Zurück</router-link>
+      <h2>Rechnung bearbeiten</h2>
+    </header>
   <form class="invoice-form" @submit.prevent="saveInvoice">
     <!-- 🔹 Block 1: Provider Info -->
     <section>
@@ -159,17 +164,20 @@
       :for-print="true"
     />
   </div>
+  </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { supabase, handleExpiredSession } from '@/lib/supabaseClient'
-import { saveFullInvoice } from '@/composables/useInvoice'
+import { saveFullInvoice, updateFullInvoice } from '@/composables/useInvoice'
 import { generateAndStoreInvoicePdf } from '@/composables/useInvoicePdf'
 import InvoicePreview from '@/components/InvoicePreview.vue'
 
 const router = useRouter()
+const route = useRoute()
+const invoiceId = route.params.id as string | undefined
 
 /** Constant used as select value to switch into "new client" mode */
 const NEW_CLIENT_VALUE = '__NEW__' as const
@@ -341,31 +349,32 @@ const saveInvoice = async (): Promise<void> => {
   }
 
   try {
-    // 1) Save everything to DB
-    // NOTE: saveFullInvoice should be updated to:
-    // - upsert clients with company_line1/2/3
-    // - insert invoice with course_overview
-    // - insert invoice_items with course
-    const invoiceId = await saveFullInvoice({
-      user,
-      provider: provider.value,
-      client: client.value,
-      invoice: invoice.value,
-      totalAmount: totalAmount.value,
-    })
+    const id = invoiceId
+      ? await updateFullInvoice({
+          user,
+          invoiceId,
+          provider: provider.value,
+          client: client.value,
+          invoice: invoice.value,
+          totalAmount: totalAmount.value,
+        })
+      : await saveFullInvoice({
+          user,
+          provider: provider.value,
+          client: client.value,
+          invoice: invoice.value,
+          totalAmount: totalAmount.value,
+        })
 
-    // 2) Ensure preview DOM is up-to-date
     await nextTick()
 
-    // 3) Generate PDF & store to bucket
     const { pdfUrl } = await generateAndStoreInvoicePdf({
       userId: user.id,
-      invoiceId,
+      invoiceId: id,
       invoiceNumber: invoice.value.number,
     })
     console.log('PDF URL:', pdfUrl)
 
-    // 4) Redirect to list
     await router.push('/invoices')
   } catch (error: unknown) {
     const msg =
@@ -414,28 +423,85 @@ const generateInvoiceNumber = async (): Promise<string> => {
 
 // ---------- Lifecycle ----------
 onMounted(async () => {
-  // 1) Ensure invoice number exists
-  if (!invoice.value.number) {
-    invoice.value.number = await generateInvoiceNumber()
-  }
-
-  // 2) Fetch profile → hydrate provider
   const { data: authData } = await supabase.auth.getUser()
   const user = authData?.user
   if (!user) return
 
-  const { data: profile } = await supabase
-    .from('user_profile')
-    .select('name, address_line1, address_line2, phone, email, tax_number, iban, bic')
-    .eq('id', user.id)
-    .maybeSingle()
+  // EDIT MODE: load existing invoice
+  if (invoiceId) {
+    const { data: invRow, error: invErr } = await supabase
+      .from('invoices')
+      .select('id, number, date, course_overview, total, client_id, clients(name, address_line1, address_line2, phone, email, leistungsbeschreibung, verwendungszweck, rechnung_preset, company_line1, company_line2, company_line3)')
+      .eq('id', invoiceId)
+      .eq('user_id', user.id)
+      .single()
 
-  if (profile) hydrateProviderFromProfile(profile as UserProfileRow)
+    if (invErr || !invRow) {
+      alert('Rechnung nicht gefunden.')
+      await router.push('/invoices')
+      return
+    }
 
-  // 3) Load clients for dropdown (include company_line1/2/3 for legacy data)
+    const { data: itemsRows } = await supabase
+      .from('invoice_items')
+      .select('date, hours, rate, course')
+      .eq('invoice_id', invoiceId)
+      .order('date')
+
+    const { data: profile } = await supabase
+      .from('user_profile')
+      .select('name, address_line1, address_line2, phone, email, tax_number, iban, bic')
+      .eq('id', user.id)
+      .maybeSingle()
+
+    if (profile) hydrateProviderFromProfile(profile as UserProfileRow)
+
+    const c = Array.isArray(invRow.clients) ? invRow.clients[0] : invRow.clients
+    const clientName = c?.name ?? [c?.company_line1, c?.company_line2, c?.company_line3].filter(Boolean).join(' · ') ?? ''
+
+    client.value = {
+      name: clientName,
+      addressLine1: c?.address_line1 ?? '',
+      addressLine2: c?.address_line2 ?? '',
+      phone: c?.phone ?? '',
+      email: c?.email ?? '',
+      leistungsbeschreibung: c?.leistungsbeschreibung ?? '',
+      verwendungszweck: c?.verwendungszweck ?? '',
+      rechnung_preset: c?.rechnung_preset ?? '',
+    }
+
+    invoice.value = {
+      number: invRow.number,
+      date: invRow.date,
+      courseOverview: invRow.course_overview ?? '',
+      items: (itemsRows ?? []).map((r: { date: string; hours: number; rate: number; course?: string }) => ({
+        date: r.date,
+        hours: r.hours,
+        rate: r.rate,
+        course: r.course ?? undefined,
+      })),
+    }
+  } else {
+    if (!invoice.value.number) {
+      invoice.value.number = await generateInvoiceNumber()
+    }
+  }
+
+  // Fetch profile (if not already done in edit mode)
+  if (!invoiceId) {
+    const { data: profile } = await supabase
+      .from('user_profile')
+      .select('name, address_line1, address_line2, phone, email, tax_number, iban, bic')
+      .eq('id', user.id)
+      .maybeSingle()
+
+    if (profile) hydrateProviderFromProfile(profile as UserProfileRow)
+  }
+
+  // Load clients for dropdown
   const { data: clientRows, error: clientErr } = await supabase
     .from('clients')
-    .select('id, name, company_line1, company_line2, company_line3, address_line1, address_line2, phone, email, leistungsbeschreibung, rechnung_preset')
+    .select('id, name, company_line1, company_line2, company_line3, address_line1, address_line2, phone, email, leistungsbeschreibung, verwendungszweck, rechnung_preset')
     .eq('user_id', user.id)
     .order('name', { ascending: true, nullsFirst: false })
 
@@ -445,8 +511,22 @@ onMounted(async () => {
     clients.value = (clientRows ?? []) as ClientRow[]
   }
 
-  // Optional: preselect the first client in the list (or keep NEW)
-  if (clients.value.length > 0) {
+  // Preselect client: in edit mode match by name; else first client or NEW
+  if (invoiceId && client.value.name) {
+    const found = clients.value.find(
+      (c) =>
+        (c.name || '').trim() === client.value.name.trim() ||
+        [c.company_line1, c.company_line2, c.company_line3].filter(Boolean).join(' · ') === client.value.name.trim()
+    )
+    if (found) {
+      selectedClientId.value = found.id
+    } else {
+      const savedClient = { ...client.value }
+      selectedClientId.value = NEW_CLIENT_VALUE
+      await nextTick()
+      client.value = savedClient
+    }
+  } else if (clients.value.length > 0) {
     selectedClientId.value = clients.value[0].id
   } else {
     selectedClientId.value = NEW_CLIENT_VALUE
@@ -455,6 +535,14 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+.page { padding: 16px; }
+.form-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+.form-header h2 { margin: 0; font-size: 1.25rem; }
 .invoice-form {
   display: grid;
   gap: 18px;

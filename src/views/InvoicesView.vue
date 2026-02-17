@@ -37,9 +37,10 @@
               <button v-if="inv.pdf_path" class="btn link" @click="openPdf(inv)" :disabled="regeneratingId === inv.id">
                 {{ regeneratingId === inv.id ? '…' : 'Öffnen' }}
               </button>
-              <router-link v-else :to="{ name: 'invoice-regenerate', params: { id: inv.id } }" class="btn link" title="PDF neu erzeugen (für alte Rechnungen ohne pdf_path)">PDF neu erstellen</router-link>
+              <router-link v-else :to="{ name: 'invoice-regenerate', params: { id: inv.id } }" class="btn link">PDF neu erstellen</router-link>
             </td>
             <td>
+              <router-link :to="{ name: 'invoice-edit', params: { id: inv.id } }" class="btn link">Bearbeiten</router-link>
               <button class="btn danger" @click="remove(inv.id)" :disabled="removingId === inv.id">
                 {{ removingId === inv.id ? 'Lösche…' : 'Löschen' }}
               </button>
@@ -58,6 +59,7 @@
               {{ regeneratingId === inv.id ? '…' : 'Öffnen' }}
             </button>
             <router-link v-else :to="{ name: 'invoice-regenerate', params: { id: inv.id } }" class="btn link">PDF neu erstellen</router-link>
+            <router-link :to="{ name: 'invoice-edit', params: { id: inv.id } }" class="btn link">Bearbeiten</router-link>
             <button class="btn danger" @click="remove(inv.id)" :disabled="removingId === inv.id">
               {{ removingId === inv.id ? 'Lösche…' : 'Löschen' }}
             </button>

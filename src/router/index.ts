@@ -23,6 +23,12 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true },
   },
   {
+    path: '/invoice/:id',
+    name: 'invoice-edit',
+    component: () => import('@/components/InvoiceForm.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
     path: '/invoices',
     name: 'invoices',
     component: () => import('@/views/InvoicesView.vue'),

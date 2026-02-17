@@ -177,3 +177,117 @@ export async function saveFullInvoice({
 
   return newInvoice.id
 }
+
+/** Update existing invoice (edit mode). Replaces client, invoice, and items. */
+export async function updateFullInvoice({
+  user,
+  invoiceId,
+  provider,
+  client,
+  invoice,
+  totalAmount,
+}: {
+  user: { id: string }
+  invoiceId: string
+  provider: ProviderProfile
+  client: ClientInfo
+  invoice: InvoiceForm
+  totalAmount: number
+}): Promise<string> {
+  const user_id = user.id
+
+  // 1️⃣ SAVE or GET CLIENT (same as saveFullInvoice)
+  const { data: existingClient, error: clientFetchError } = await supabase
+    .from('clients')
+    .select('id')
+    .eq('user_id', user_id)
+    .eq('name', client.name)
+    .maybeSingle()
+
+  if (clientFetchError) {
+    throw new Error('Fehler beim Abrufen des Kunden: ' + clientFetchError.message)
+  }
+
+  let clientId = existingClient?.id
+
+  if (clientId) {
+    await supabase
+      .from('clients')
+      .update({
+        leistungsbeschreibung: client.leistungsbeschreibung || null,
+        verwendungszweck: client.verwendungszweck || null,
+        zusatz_angaben: client.zusatz_angaben || null,
+        rechnung_preset: client.rechnung_preset || null,
+      })
+      .eq('id', clientId)
+  }
+
+  if (!clientId) {
+    const { data: newClient, error: clientInsertError } = await supabase
+      .from('clients')
+      .insert({
+        user_id,
+        name: client.name,
+        address_line1: client.addressLine1,
+        address_line2: client.addressLine2,
+        phone: client.phone ?? null,
+        email: client.email ?? null,
+        leistungsbeschreibung: client.leistungsbeschreibung ?? null,
+        verwendungszweck: client.verwendungszweck ?? null,
+        zusatz_angaben: client.zusatz_angaben ?? null,
+        rechnung_preset: client.rechnung_preset ?? null,
+      })
+      .select()
+      .single()
+
+    if (clientInsertError) {
+      throw new Error('Fehler beim Speichern des Kunden: ' + clientInsertError.message)
+    }
+    clientId = newClient.id
+  }
+
+  // 2️⃣ UPDATE INVOICE
+  const { error: invoiceUpdateError } = await supabase
+    .from('invoices')
+    .update({
+      client_id: clientId,
+      number: invoice.number,
+      date: invoice.date,
+      course_overview: invoice.courseOverview,
+      total: totalAmount,
+    })
+    .eq('id', invoiceId)
+    .eq('user_id', user_id)
+
+  if (invoiceUpdateError) {
+    throw new Error('Fehler beim Aktualisieren der Rechnung: ' + invoiceUpdateError.message)
+  }
+
+  // 3️⃣ REPLACE INVOICE ITEMS (delete old, insert new)
+  const { error: itemsDeleteError } = await supabase
+    .from('invoice_items')
+    .delete()
+    .eq('invoice_id', invoiceId)
+
+  if (itemsDeleteError) {
+    throw new Error('Fehler beim Löschen der Termine: ' + itemsDeleteError.message)
+  }
+
+  const itemsToInsert = invoice.items.map((item: InvoiceItem) => ({
+    invoice_id: invoiceId,
+    user_id,
+    date: item.date,
+    hours: item.hours,
+    rate: item.rate,
+    amount: Number((item.hours * item.rate).toFixed(2)),
+    course: item.course ?? null,
+  }))
+
+  const { error: itemsInsertError } = await supabase.from('invoice_items').insert(itemsToInsert)
+
+  if (itemsInsertError) {
+    throw new Error('Fehler beim Speichern der Termine: ' + itemsInsertError.message)
+  }
+
+  return invoiceId
+}
