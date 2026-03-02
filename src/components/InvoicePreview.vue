@@ -42,7 +42,7 @@
         <strong v-if="invoice.courseOverview">{{ invoice.courseOverview }}</strong>
       </template>
       <template v-else>
-        FÜR Unterricht im Rahmen des Integrationskurses
+        Für Unterricht im Rahmen
         <strong>{{ invoice.courseOverview }}</strong>
       </template>
     </div>
@@ -176,7 +176,7 @@ function formatMoney(v: number) {
   position: relative;
   width: 210mm;
   min-height: 297mm;
-  padding: 18mm 20mm 36mm;
+  padding: 18mm 18mm 14mm;
   background: #fff;
   color: #111827;
   font-family:
@@ -249,11 +249,11 @@ function formatMoney(v: number) {
   font-weight: 700;
   background: #f9fafb;
   border-bottom: 1px solid #e5e7eb;
-  padding: 6px 8px;
+  padding: 8px 10px;
 }
 .t td {
   border-bottom: 1px solid #f0f0f0;
-  padding: 6px 8px;
+  padding: 8px 10px;
 }
 .t .num {
   text-align: center;
@@ -299,14 +299,14 @@ function formatMoney(v: number) {
   font-weight: 500;
 }
 
-/* Fixed footer */
+/* Footer: прижат к нижнему краю страницы */
 .footer {
   position: absolute;
-  left: 20mm;
-  right: 20mm;
-  bottom: 14mm;
-  border-top: 1px solid #e5e7eb;
+  left: 18mm;
+  right: 18mm;
+  bottom: 0;
   padding-top: 4mm;
+  border-top: 1px solid #e5e7eb;
   font-size: 9.8pt;
   color: #374151;
   text-align: center;
@@ -347,7 +347,7 @@ function formatMoney(v: number) {
   .a4 {
     width: 210mm;
     min-height: 297mm;
-    padding: 12mm 14mm 30mm;
+    padding: 18mm 18mm 14mm;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }

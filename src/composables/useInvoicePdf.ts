@@ -28,26 +28,34 @@ export async function generateAndStoreInvoicePdf(opts: GenOpts): Promise<GenResu
   })
   const imgData = canvas.toDataURL('image/jpeg', 0.82)
 
-  // 2) Create A4 PDF
+  // 2) Create A4 PDF: поля страницы и выравнивание по низу (футер у нижнего края)
   const pdf = new jsPDF('p', 'mm', 'a4')
   const pageW = pdf.internal.pageSize.getWidth()
   const pageH = pdf.internal.pageSize.getHeight()
 
-  const imgW = pageW
+  const marginLeft = 18
+  const marginRight = 18
+  const marginTop = 18
+  const marginBottom = 8 // минимальный отступ от нижнего края листа
+  const contentW = pageW - marginLeft - marginRight
+  const contentH = pageH - marginTop - marginBottom
+
+  const imgW = contentW
   const imgH = (canvas.height / canvas.width) * imgW
 
-  if (imgH <= pageH) {
-    pdf.addImage(imgData, 'JPEG', 0, 0, imgW, imgH)
+  if (imgH <= contentH) {
+    // Фиксированное верхнее поле: изображение всегда от верхнего края
+    pdf.addImage(imgData, 'JPEG', marginLeft, marginTop, imgW, imgH)
   } else {
-    // Multi-page: сдвигаем исходное изображение вверх на высоту страницы
+    // Многостраничный: стандартная логика
     let offsetYmm = 0
     let remaining = imgH
     while (remaining > 0) {
-      pdf.addImage(imgData, 'JPEG', 0, -offsetYmm, imgW, imgH)
-      remaining -= pageH
+      pdf.addImage(imgData, 'JPEG', marginLeft, marginTop - offsetYmm, imgW, imgH)
+      remaining -= contentH
       if (remaining > 0) {
         pdf.addPage()
-        offsetYmm += pageH
+        offsetYmm += contentH
       }
     }
   }

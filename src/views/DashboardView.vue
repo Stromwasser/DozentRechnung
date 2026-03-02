@@ -91,7 +91,7 @@ onMounted(async () => {
     .from('invoices')
     .select('id, number, date, total, clients(name, company_line1, company_line2, company_line3)')
     .eq('user_id', user.id)
-    .order('date', { ascending: false })
+    .order('number', { ascending: false })
   const raw = (data ?? []) as Array<{
     id: string
     number: string

@@ -178,7 +178,7 @@ async function fetchInvoices(userId: string): Promise<void> {
     .from('invoices')
     .select('id, number, date, total, course_overview, pdf_signed_url, pdf_url, pdf_path, pdf_url_expires_at, clients(name, company_line1, company_line2, company_line3)')
     .eq('user_id', userId)
-    .order('date', { ascending: false })
+    .order('number', { ascending: false })
 
   if (error) {
     console.warn('Invoices with clients join failed:', error.message, '- trying without join')
@@ -186,7 +186,7 @@ async function fetchInvoices(userId: string): Promise<void> {
       .from('invoices')
       .select('id, number, date, total, course_overview, pdf_signed_url, pdf_url, pdf_path, pdf_url_expires_at')
       .eq('user_id', userId)
-      .order('date', { ascending: false })
+      .order('number', { ascending: false })
     if (fallback.error) {
       console.error('Failed to load invoices:', fallback.error.message)
       invoices.value = []

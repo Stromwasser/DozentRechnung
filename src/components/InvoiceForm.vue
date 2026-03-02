@@ -566,8 +566,20 @@ table {
 }
 th,
 td {
-  padding: 6px 8px;
+  padding: 8px 10px;
   border-bottom: 1px solid #eee;
+}
+table input {
+  min-width: 90px;
+  padding: 8px 10px;
+  font-size: 1rem;
+  box-sizing: border-box;
+}
+table input[type="date"] {
+  min-width: 140px;
+}
+table input[type="number"] {
+  min-width: 80px;
 }
 button {
   cursor: pointer;
