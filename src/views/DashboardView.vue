@@ -29,7 +29,7 @@
             <div class="inv-info">
               <span class="inv-number">{{ inv.number }}</span>
               <span class="inv-date">{{ fmtDate(inv.date) }}</span>
-              <span class="inv-client">{{ inv.client_name || '—' }}</span>
+              <span class="inv-client">{{ inv.client_name }}</span>
             </div>
             <div class="inv-total">{{ fmtMoney(inv.total) }} €</div>
             <router-link :to="{ name: 'invoices' }" class="btn small">Liste</router-link>
@@ -43,115 +43,45 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { supabase } from '@/lib/supabaseClient'
+import { localListInvoiceSummaries } from '@/lib/localStore'
 
-type ClientRaw = { name?: string | null; company_line1?: string | null; company_line2?: string | null; company_line3?: string | null }
-type InvoiceRow = {
-  id: string
-  number: string
-  date: string
-  total: number
-  client_name: string
-}
+type InvoiceRow = { id: string; number: string; date: string; total: number; client_name: string }
 
 const invoices = ref<InvoiceRow[]>([])
 const loading = ref(true)
 
-const totalRevenue = computed(() =>
-  invoices.value.reduce((sum, inv) => sum + inv.total, 0)
-)
-
-const recentInvoices = computed(() =>
-  invoices.value.slice(0, 5)
-)
+const totalRevenue = computed(() => invoices.value.reduce((sum, inv) => sum + inv.total, 0))
+const recentInvoices = computed(() => invoices.value.slice(0, 5))
 
 function fmtDate(d: string): string {
-  return new Intl.DateTimeFormat('de-DE', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  }).format(new Date(d))
+  return new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(d))
 }
 
 function fmtMoney(v: number): string {
-  return new Intl.NumberFormat('de-DE', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(v)
+  return new Intl.NumberFormat('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v)
 }
 
-onMounted(async () => {
-  const { data: auth } = await supabase.auth.getUser()
-  const user = auth?.user
-  if (!user) {
-    loading.value = false
-    return
-  }
-  const { data } = await supabase
-    .from('invoices')
-    .select('id, number, date, total, clients(name, company_line1, company_line2, company_line3)')
-    .eq('user_id', user.id)
-    .order('number', { ascending: false })
-  const raw = (data ?? []) as Array<{
-    id: string
-    number: string
-    date: string
-    total: number
-    clients?: ClientRaw | ClientRaw[] | null
-  }>
-  invoices.value = raw.map((r) => {
-    const c = Array.isArray(r.clients) ? r.clients[0] : r.clients
-    const clientName = c
-      ? c.name || [c.company_line1, c.company_line2, c.company_line3].filter(Boolean).join(' · ') || '—'
-      : '—'
-    return { id: r.id, number: r.number, date: r.date, total: r.total, client_name: clientName }
-  })
+onMounted(() => {
+  invoices.value = localListInvoiceSummaries().map((r) => ({
+    id: r.id,
+    number: r.number,
+    date: r.date,
+    total: r.total,
+    client_name: r.client_name || '—',
+  }))
   loading.value = false
 })
 </script>
 
 <style scoped>
-.dashboard {
-  padding: 1.5rem;
-  max-width: 600px;
-  margin: 0 auto;
-}
-.dashboard-title {
-  font-size: 1.5rem;
-  margin-bottom: 1.5rem;
-}
-.stats {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1rem;
-  margin-bottom: 1.5rem;
-}
-.stat-card {
-  background: #fff;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  padding: 1rem;
-  text-align: center;
-}
-.stat-card.highlight {
-  background: #eff6ff;
-  border-color: #3b82f6;
-}
-.stat-label {
-  display: block;
-  font-size: 0.875rem;
-  color: #6b7280;
-  margin-bottom: 0.5rem;
-}
-.stat-value {
-  font-size: 1.25rem;
-  font-weight: 600;
-}
-.dashboard-actions {
-  display: flex;
-  gap: 0.75rem;
-  margin-bottom: 1.5rem;
-}
+.dashboard { padding: 1.5rem; max-width: 600px; margin: 0 auto; }
+.dashboard-title { font-size: 1.5rem; margin-bottom: 1.5rem; }
+.stats { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem; }
+.stat-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 1rem; text-align: center; }
+.stat-card.highlight { background: #eff6ff; border-color: #3b82f6; }
+.stat-label { display: block; font-size: 0.875rem; color: #6b7280; margin-bottom: 0.5rem; }
+.stat-value { font-size: 1.25rem; font-weight: 600; }
+.dashboard-actions { display: flex; gap: 0.75rem; margin-bottom: 1.5rem; }
 .dashboard-actions .btn {
   padding: 0.75rem 1rem;
   min-height: 44px;
@@ -162,20 +92,9 @@ onMounted(async () => {
   background: #fff;
   color: #374151;
 }
-.dashboard-actions .btn.primary {
-  background: #2563eb;
-  color: white;
-  border-color: #2563eb;
-}
-.recent h2 {
-  font-size: 1.1rem;
-  margin-bottom: 0.75rem;
-}
-.invoice-list {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-}
+.dashboard-actions .btn.primary { background: #2563eb; color: white; border-color: #2563eb; }
+.recent h2 { font-size: 1.1rem; margin-bottom: 0.75rem; }
+.invoice-list { list-style: none; padding: 0; margin: 0; }
 .invoice-item {
   display: flex;
   align-items: center;
@@ -186,22 +105,10 @@ onMounted(async () => {
   border-radius: 6px;
   margin-bottom: 0.5rem;
 }
-.inv-info {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-.inv-number {
-  font-weight: 600;
-}
-.inv-date, .inv-client {
-  font-size: 0.875rem;
-  color: #6b7280;
-}
-.inv-total {
-  font-weight: 600;
-}
+.inv-info { flex: 1; display: flex; flex-direction: column; gap: 0.25rem; }
+.inv-number { font-weight: 600; }
+.inv-date, .inv-client { font-size: 0.875rem; color: #6b7280; }
+.inv-total { font-weight: 600; }
 .btn.small {
   padding: 0.5rem 0.75rem;
   font-size: 0.875rem;
@@ -211,7 +118,5 @@ onMounted(async () => {
   background: #fff;
   color: #374151;
 }
-.empty {
-  color: #6b7280;
-}
+.empty { color: #6b7280; }
 </style>

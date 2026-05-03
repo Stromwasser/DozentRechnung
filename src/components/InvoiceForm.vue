@@ -5,7 +5,7 @@
       <h2>Rechnung bearbeiten</h2>
     </header>
   <form class="invoice-form" @submit.prevent="saveInvoice">
-    <!-- 🔹 Block 1: Provider Info -->
+    <!-- Block 1: Provider Info -->
     <section>
       <h3>👤 Deine Daten</h3>
       <div class="form-group">
@@ -42,11 +42,9 @@
       </div>
     </section>
 
-    <!-- 🔹 Block 2: Client Selector + Client Info -->
+    <!-- Block 2: Client Selector + Client Info -->
     <section>
       <h3>🏢 Kundendaten</h3>
-
-      <!-- Client dropdown -->
       <div class="form-group">
         <label for="client-select">Kunde wählen</label>
         <select id="client-select" v-model="selectedClientId">
@@ -56,7 +54,6 @@
           </option>
         </select>
       </div>
-
       <div class="form-group">
         <label for="client-name">Firmenname</label>
         <input id="client-name" v-model="client.name" required />
@@ -95,17 +92,12 @@
       </details>
     </section>
 
-    <!-- 🔹 Block 3: Rechnung Info -->
+    <!-- Block 3: Rechnung Info -->
     <section>
       <h3>🧾 Rechnung</h3>
       <div class="form-group">
         <label for="course-overview">Kursübersicht (für Kopfzeile)</label>
-        <input
-          id="course-overview"
-          v-model="invoice.courseOverview"
-          placeholder="z. B. IK-2025-01, JIK-2025-01, BSK 192"
-          required
-        />
+        <input id="course-overview" v-model="invoice.courseOverview" placeholder="z. B. IK-2025-01, JIK-2025-01, BSK 192" required />
       </div>
       <div class="form-group">
         <label for="invoice-date">Datum</label>
@@ -117,7 +109,7 @@
       </div>
     </section>
 
-    <!-- 🔹 Block 4: Tabelle -->
+    <!-- Block 4: Tabelle -->
     <section>
       <h3>📅 Termine</h3>
       <table>
@@ -125,7 +117,6 @@
           <tr>
             <th>Datum</th>
             <th>Kurs</th>
-            <!-- NEW -->
             <th>Stunden</th>
             <th>Stundensatz (€)</th>
             <th>Betrag (€)</th>
@@ -135,9 +126,7 @@
         <tbody>
           <tr v-for="(item, index) in invoice.items" :key="index">
             <td><input type="date" v-model="item.date" required /></td>
-            <td>
-              <input v-model="item.course" placeholder="z. B. IK-2025-01" />
-            </td>
+            <td><input v-model="item.course" placeholder="z. B. IK-2025-01" /></td>
             <td><input type="number" v-model.number="item.hours" min="1" step="0.5" required /></td>
             <td><input type="number" v-model.number="item.rate" step="0.01" required /></td>
             <td>{{ (item.hours * item.rate).toFixed(2) }}</td>
@@ -149,9 +138,7 @@
     </section>
 
     <p><strong>Gesamt:</strong> {{ totalAmount.toFixed(2) }} €</p>
-
-    <!-- 🔘 Save Button -->
-    <button type="submit">💾 Rechnung speichern</button>
+    <button type="submit" :disabled="saving">{{ saving ? '… Speichere' : '💾 Rechnung speichern' }}</button>
   </form>
 
   <!-- Hidden preview for PDF capture -->
@@ -170,7 +157,14 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { supabase, handleExpiredSession } from '@/lib/supabaseClient'
+import {
+  localGetNextInvoiceNumber,
+  localListClients,
+  localGetInvoiceById,
+  localGetClientById,
+  localGetProfile,
+  type LocalClientRow,
+} from '@/lib/localStore'
 import { saveFullInvoice, updateFullInvoice } from '@/composables/useInvoice'
 import { generateAndStoreInvoicePdf } from '@/composables/useInvoicePdf'
 import InvoicePreview from '@/components/InvoicePreview.vue'
@@ -178,121 +172,33 @@ import InvoicePreview from '@/components/InvoicePreview.vue'
 const router = useRouter()
 const route = useRoute()
 const invoiceId = route.params.id as string | undefined
+const saving = ref(false)
 
-/** Constant used as select value to switch into "new client" mode */
 const NEW_CLIENT_VALUE = '__NEW__' as const
 
-// ---------- Types ----------
-type Provider = {
-  name: string
-  addressLine1: string
-  addressLine2: string
-  phone: string
-  email: string
-  taxNumber: string
-  iban: string
-  bic: string
-}
+type Provider = { name: string; addressLine1: string; addressLine2: string; phone: string; email: string; taxNumber: string; iban: string; bic: string }
+type Client = { name: string; addressLine1: string; addressLine2: string; phone: string; email: string; leistungsbeschreibung?: string; verwendungszweck?: string; zusatz_angaben?: string; rechnung_preset?: string }
+type ClientRow = LocalClientRow
+type UserProfileRow = { name?: string; address_line1?: string; address_line2?: string; phone?: string; email?: string; tax_number?: string; iban?: string; bic?: string }
 
-type Client = {
-  name: string
-  addressLine1: string
-  addressLine2: string
-  phone: string
-  email: string
-  leistungsbeschreibung?: string
-  verwendungszweck?: string
-  zusatz_angaben?: string
-  rechnung_preset?: string
-}
-
-type ClientRow = {
-  id: string
-  name: string | null
-  company_line1?: string | null
-  company_line2?: string | null
-  company_line3?: string | null
-  address_line1: string | null
-  address_line2: string | null
-  phone: string | null
-  email: string | null
-  leistungsbeschreibung?: string | null
-  verwendungszweck?: string | null
-  zusatz_angaben?: string | null
-  rechnung_preset?: string | null
-}
-
-type InvoiceItem = { date: string; hours: number; rate: number; course?: string }
-type Invoice = {
-  courseOverview: string // maps to invoices.course_overview
-  date: string
-  number: string
-  items: InvoiceItem[]
-}
-
-type UserProfileRow = {
-  name?: string
-  address_line1?: string
-  address_line2?: string
-  phone?: string
-  email?: string
-  tax_number?: string
-  iban?: string
-  bic?: string
-}
-
-// ---------- State ----------
-const provider = ref<Provider>({
-  name: '',
-  addressLine1: '',
-  addressLine2: '',
-  phone: '',
-  email: '',
-  taxNumber: '',
-  iban: '',
-  bic: '',
-})
-
-const client = ref<Client>({
-  name: '',
-  addressLine1: '',
-  addressLine2: '',
-  phone: '',
-  email: '',
-  leistungsbeschreibung: '',
-  rechnung_preset: '',
-})
-
+const provider = ref<Provider>({ name: '', addressLine1: '', addressLine2: '', phone: '', email: '', taxNumber: '', iban: '', bic: '' })
+const client = ref<Client>({ name: '', addressLine1: '', addressLine2: '', phone: '', email: '', leistungsbeschreibung: '', rechnung_preset: '' })
 const clients = ref<ClientRow[]>([])
 const selectedClientId = ref<string | typeof NEW_CLIENT_VALUE>(NEW_CLIENT_VALUE)
 
 const todayISO = new Date().toISOString().substring(0, 10)
-const invoice = ref<Invoice>({
-  courseOverview: '',
-  date: todayISO,
-  number: '',
-  items: [{ date: todayISO, hours: 5, rate: 42.23, course: '' }],
-})
+const invoice = ref({ courseOverview: '', date: todayISO, number: '', items: [{ date: todayISO, hours: 5, rate: 42.23, course: '' }] })
 
-// ---------- Helpers ----------
-const addItem = () => {
-  invoice.value.items.push({
-    date: new Date().toISOString().substring(0, 10),
-    hours: 5,
-    rate: 42.23,
-    course: '',
-  })
+const totalAmount = computed(() => invoice.value.items.reduce((sum, item) => sum + item.hours * item.rate, 0))
+
+function addItem() {
+  invoice.value.items.push({ date: new Date().toISOString().substring(0, 10), hours: 5, rate: 42.23, course: '' })
 }
-const removeItem = (index: number) => {
+function removeItem(index: number) {
   invoice.value.items.splice(index, 1)
 }
-const totalAmount = computed<number>(() => {
-  return invoice.value.items.reduce((sum, item) => sum + item.hours * item.rate, 0)
-})
 
-/** Map snake_case profile to camelCase provider fields */
 function hydrateProviderFromProfile(p: Partial<UserProfileRow>) {
-  if (!p) return
   provider.value.name = p.name ?? provider.value.name
   provider.value.addressLine1 = p.address_line1 ?? provider.value.addressLine1
   provider.value.addressLine2 = p.address_line2 ?? provider.value.addressLine2
@@ -303,33 +209,20 @@ function hydrateProviderFromProfile(p: Partial<UserProfileRow>) {
   provider.value.bic = p.bic ?? provider.value.bic
 }
 
-/** Build display name for client dropdown (supports legacy company_line1/2/3) */
 function clientDisplayName(c: ClientRow): string {
   if (c.name) return c.name
   const parts = [c.company_line1, c.company_line2, c.company_line3].filter(Boolean)
   return parts.length ? parts.join(' · ') : '(Ohne Namen)'
 }
 
-/** When dropdown changes, either clear for new client or fill with selected client */
 watch(selectedClientId, (val) => {
   if (val === NEW_CLIENT_VALUE) {
-    client.value = {
-      name: '',
-      addressLine1: '',
-      addressLine2: '',
-      phone: '',
-      email: '',
-      leistungsbeschreibung: '',
-      rechnung_preset: '',
-    }
+    client.value = { name: '', addressLine1: '', addressLine2: '', phone: '', email: '', leistungsbeschreibung: '', rechnung_preset: '' }
     return
   }
   const found = clients.value.find((c) => c.id === val)
   if (found) {
-    client.value.name =
-      found.name ||
-      [found.company_line1, found.company_line2, found.company_line3].filter(Boolean).join(' · ') ||
-      ''
+    client.value.name = found.name || [found.company_line1, found.company_line2, found.company_line3].filter(Boolean).join(' · ') || ''
     client.value.addressLine1 = found.address_line1 ?? ''
     client.value.addressLine2 = found.address_line2 ?? ''
     client.value.phone = found.phone ?? ''
@@ -339,124 +232,50 @@ watch(selectedClientId, (val) => {
   }
 })
 
-/** Save flow: persist client/profile/invoice/items, then generate PDF, then redirect */
-const saveInvoice = async (): Promise<void> => {
-  const { data: authData } = await supabase.auth.getUser()
-  const user = authData?.user
-  if (!user) {
-    alert('❌ Du bist nicht eingeloggt.')
-    return
-  }
-
+async function saveInvoice(): Promise<void> {
+  saving.value = true
   try {
     const id = invoiceId
-      ? await updateFullInvoice({
-          user,
-          invoiceId,
-          provider: provider.value,
-          client: client.value,
-          invoice: invoice.value,
-          totalAmount: totalAmount.value,
-        })
-      : await saveFullInvoice({
-          user,
-          provider: provider.value,
-          client: client.value,
-          invoice: invoice.value,
-          totalAmount: totalAmount.value,
-        })
+      ? await updateFullInvoice({ invoiceId, provider: provider.value, client: client.value, invoice: invoice.value, totalAmount: totalAmount.value })
+      : await saveFullInvoice({ provider: provider.value, client: client.value, invoice: invoice.value, totalAmount: totalAmount.value })
 
     await nextTick()
-
-    const { pdfUrl } = await generateAndStoreInvoicePdf({
-      userId: user.id,
-      invoiceId: id,
-      invoiceNumber: invoice.value.number,
-    })
-    console.log('PDF URL:', pdfUrl)
-
+    await generateAndStoreInvoicePdf({ invoiceId: id, invoiceNumber: invoice.value.number })
     await router.push('/invoices')
-  } catch (error: unknown) {
-    const msg =
-      error instanceof Error
-        ? error.message
-        : (error as { message?: string })?.message ??
-          (error as { error?: string })?.error ??
-          String(error)
-    const msgLower = String(msg).toLowerCase()
-    if (msgLower.includes('invalidjwt') || msgLower.includes('exp') || msgLower.includes('jwt')) {
-      handleExpiredSession()
-      return
-    }
-    console.error('Save invoice error:', error)
-    alert('❌ Fehler: ' + (msg || 'Unbekannter Fehler.'))
+  } catch (e) {
+    alert('❌ Fehler: ' + (e instanceof Error ? e.message : String(e)))
+  } finally {
+    saving.value = false
   }
 }
 
-/** Generate next invoice number like YYYY-MM-XXX */
-const generateInvoiceNumber = async (): Promise<string> => {
-  const now = new Date()
-  const year = now.getFullYear()
-  const month = String(now.getMonth() + 1).padStart(2, '0')
-  const prefix = `${year}-${month}-`
-
-  const { data, error } = await supabase
-    .from('invoices')
-    .select('number')
-    .like('number', `${prefix}%`)
-
-  if (error) {
-    console.error('Error fetching invoices:', error.message)
-    return `${prefix}001`
+function preselectClient() {
+  if (invoiceId && client.value.name) {
+    const found = clients.value.find(
+      (c) =>
+        (c.name || '').trim() === client.value.name.trim() ||
+        [c.company_line1, c.company_line2, c.company_line3].filter(Boolean).join(' · ') === client.value.name.trim()
+    )
+    selectedClientId.value = found ? found.id : NEW_CLIENT_VALUE
+  } else if (clients.value.length > 0) {
+    selectedClientId.value = clients.value[0].id
+  } else {
+    selectedClientId.value = NEW_CLIENT_VALUE
   }
-
-  const numbers = (data ?? []).map((inv: { number: string }) => inv.number)
-  const maxNum =
-    numbers
-      .map((num) => parseInt(num.replace(prefix, ''), 10))
-      .filter((n) => !isNaN(n))
-      .sort((a, b) => b - a)[0] || 0
-
-  const nextNum = String(maxNum + 1).padStart(3, '0')
-  return `${prefix}${nextNum}`
 }
 
-// ---------- Lifecycle ----------
 onMounted(async () => {
-  const { data: authData } = await supabase.auth.getUser()
-  const user = authData?.user
-  if (!user) return
+  const prof = localGetProfile() as UserProfileRow | null
+  if (prof) hydrateProviderFromProfile(prof)
 
-  // EDIT MODE: load existing invoice
   if (invoiceId) {
-    const { data: invRow, error: invErr } = await supabase
-      .from('invoices')
-      .select('id, number, date, course_overview, total, client_id, clients(name, address_line1, address_line2, phone, email, leistungsbeschreibung, verwendungszweck, rechnung_preset, company_line1, company_line2, company_line3)')
-      .eq('id', invoiceId)
-      .eq('user_id', user.id)
-      .single()
-
-    if (invErr || !invRow) {
+    const invRow = localGetInvoiceById(invoiceId)
+    if (!invRow) {
       alert('Rechnung nicht gefunden.')
       await router.push('/invoices')
       return
     }
-
-    const { data: itemsRows } = await supabase
-      .from('invoice_items')
-      .select('date, hours, rate, course')
-      .eq('invoice_id', invoiceId)
-      .order('date')
-
-    const { data: profile } = await supabase
-      .from('user_profile')
-      .select('name, address_line1, address_line2, phone, email, tax_number, iban, bic')
-      .eq('id', user.id)
-      .maybeSingle()
-
-    if (profile) hydrateProviderFromProfile(profile as UserProfileRow)
-
-    const c = Array.isArray(invRow.clients) ? invRow.clients[0] : invRow.clients
+    const c = localGetClientById(invRow.client_id)
     const clientName = c?.name ?? [c?.company_line1, c?.company_line2, c?.company_line3].filter(Boolean).join(' · ') ?? ''
 
     client.value = {
@@ -469,119 +288,44 @@ onMounted(async () => {
       verwendungszweck: c?.verwendungszweck ?? '',
       rechnung_preset: c?.rechnung_preset ?? '',
     }
-
     invoice.value = {
       number: invRow.number,
       date: invRow.date,
       courseOverview: invRow.course_overview ?? '',
-      items: (itemsRows ?? []).map((r: { date: string; hours: number; rate: number; course?: string }) => ({
-        date: r.date,
-        hours: r.hours,
-        rate: r.rate,
-        course: r.course ?? undefined,
-      })),
+      items: invRow.items.map((r) => ({ date: r.date, hours: r.hours, rate: r.rate, course: r.course ?? '' })),
     }
   } else {
-    if (!invoice.value.number) {
-      invoice.value.number = await generateInvoiceNumber()
-    }
+    invoice.value.number = localGetNextInvoiceNumber()
   }
 
-  // Fetch profile (if not already done in edit mode)
-  if (!invoiceId) {
-    const { data: profile } = await supabase
-      .from('user_profile')
-      .select('name, address_line1, address_line2, phone, email, tax_number, iban, bic')
-      .eq('id', user.id)
-      .maybeSingle()
+  clients.value = localListClients()
 
-    if (profile) hydrateProviderFromProfile(profile as UserProfileRow)
-  }
-
-  // Load clients for dropdown
-  const { data: clientRows, error: clientErr } = await supabase
-    .from('clients')
-    .select('id, name, company_line1, company_line2, company_line3, address_line1, address_line2, phone, email, leistungsbeschreibung, verwendungszweck, rechnung_preset')
-    .eq('user_id', user.id)
-    .order('name', { ascending: true, nullsFirst: false })
-
-  if (clientErr) {
-    console.error('Failed to load clients:', clientErr.message)
-  } else {
-    clients.value = (clientRows ?? []) as ClientRow[]
-  }
-
-  // Preselect client: in edit mode match by name; else first client or NEW
   if (invoiceId && client.value.name) {
-    const found = clients.value.find(
-      (c) =>
-        (c.name || '').trim() === client.value.name.trim() ||
-        [c.company_line1, c.company_line2, c.company_line3].filter(Boolean).join(' · ') === client.value.name.trim()
-    )
-    if (found) {
-      selectedClientId.value = found.id
-    } else {
-      const savedClient = { ...client.value }
-      selectedClientId.value = NEW_CLIENT_VALUE
+    const savedClient = { ...client.value }
+    preselectClient()
+    if (selectedClientId.value === NEW_CLIENT_VALUE) {
       await nextTick()
       client.value = savedClient
     }
-  } else if (clients.value.length > 0) {
-    selectedClientId.value = clients.value[0].id
   } else {
-    selectedClientId.value = NEW_CLIENT_VALUE
+    preselectClient()
   }
 })
 </script>
 
 <style scoped>
 .page { padding: 16px; }
-.form-header {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  margin-bottom: 1rem;
-}
+.form-header { display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem; }
 .form-header h2 { margin: 0; font-size: 1.25rem; }
-.invoice-form {
-  display: grid;
-  gap: 18px;
-}
-section {
-  border: 1px solid #e5e7eb;
-  padding: 12px;
-  border-radius: 8px;
-}
-h3 {
-  margin: 0 0 8px;
-}
-.form-group {
-  display: grid;
-  gap: 6px;
-  margin-bottom: 8px;
-}
-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-th,
-td {
-  padding: 8px 10px;
-  border-bottom: 1px solid #eee;
-}
-table input {
-  min-width: 90px;
-  padding: 8px 10px;
-  font-size: 1rem;
-  box-sizing: border-box;
-}
-table input[type="date"] {
-  min-width: 140px;
-}
-table input[type="number"] {
-  min-width: 80px;
-}
-button {
-  cursor: pointer;
-}
+.invoice-form { display: grid; gap: 18px; }
+section { border: 1px solid #e5e7eb; padding: 12px; border-radius: 8px; }
+h3 { margin: 0 0 8px; }
+.form-group { display: grid; gap: 6px; margin-bottom: 8px; }
+table { width: 100%; border-collapse: collapse; }
+th, td { padding: 8px 10px; border-bottom: 1px solid #eee; }
+table input { min-width: 90px; padding: 8px 10px; font-size: 1rem; box-sizing: border-box; }
+table input[type="date"] { min-width: 140px; }
+table input[type="number"] { min-width: 80px; }
+button { cursor: pointer; }
+.btn { padding: 6px 12px; border: 1px solid #e5e7eb; border-radius: 6px; background: #fff; text-decoration: none; }
 </style>

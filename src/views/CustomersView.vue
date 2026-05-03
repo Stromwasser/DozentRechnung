@@ -3,14 +3,11 @@
     <header class="flex between">
       <h2>Kunden</h2>
       <div class="actions">
-        <button class="btn" @click="reload" :disabled="loading">🔄 Aktualisieren</button>
         <button class="btn primary" @click="openForm()">+ Neuer Kunde</button>
       </div>
     </header>
 
-    <template v-if="loading">Laden…</template>
-
-    <div v-else-if="clients.length" class="clients-container">
+    <div v-if="clients.length" class="clients-container">
       <table class="tbl tbl-desktop">
         <thead>
           <tr>
@@ -22,8 +19,8 @@
         </thead>
         <tbody>
           <tr v-for="c in clients" :key="c.id">
-            <td>{{ c.name || [c.company_line1, c.company_line2, c.company_line3].filter(Boolean).join(' · ') || '—' }}</td>
-            <td>{{ [c.address_line1, c.address_line2].filter(Boolean).join(', ') || [c.company_line1, c.company_line2, c.company_line3].filter(Boolean).join(', ') || '—' }}</td>
+            <td>{{ displayName(c) }}</td>
+            <td>{{ [c.address_line1, c.address_line2].filter(Boolean).join(', ') || '—' }}</td>
             <td>{{ c.email || c.phone || '—' }}</td>
             <td>
               <button class="btn link" @click="openForm(c)">Bearbeiten</button>
@@ -36,8 +33,8 @@
       </table>
       <div class="client-cards">
         <div v-for="c in clients" :key="c.id" class="client-card">
-          <div class="card-row"><span class="card-label">Name</span>{{ c.name || [c.company_line1, c.company_line2, c.company_line3].filter(Boolean).join(' · ') || '—' }}</div>
-          <div class="card-row"><span class="card-label">Adresse</span>{{ [c.address_line1, c.address_line2].filter(Boolean).join(', ') || [c.company_line1, c.company_line2, c.company_line3].filter(Boolean).join(', ') || '—' }}</div>
+          <div class="card-row"><span class="card-label">Name</span>{{ displayName(c) }}</div>
+          <div class="card-row"><span class="card-label">Adresse</span>{{ [c.address_line1, c.address_line2].filter(Boolean).join(', ') || '—' }}</div>
           <div class="card-row"><span class="card-label">Kontakt</span>{{ c.email || c.phone || '—' }}</div>
           <div class="card-row card-actions">
             <button class="btn link" @click="openForm(c)">Bearbeiten</button>
@@ -51,7 +48,6 @@
 
     <p v-else>Keine Kunden. Klicke «+ Neuer Kunde» um einen anzulegen.</p>
 
-    <!-- Modal: Add/Edit -->
     <Teleport to="body">
       <div v-if="formOpen" class="modal-overlay" @click.self="closeForm">
         <div class="modal">
@@ -112,31 +108,23 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { supabase } from '@/lib/supabaseClient'
+import {
+  localListClients,
+  localSaveClient,
+  localDeleteClient,
+  localCountInvoicesForClient,
+  type LocalClientRow,
+} from '@/lib/localStore'
 
-type ClientRow = {
-  id: string
-  name: string | null
-  address_line1?: string | null
-  address_line2?: string | null
-  company_line1?: string | null
-  company_line2?: string | null
-  company_line3?: string | null
-  phone: string | null
-  email: string | null
-  leistungsbeschreibung?: string | null
-  verwendungszweck?: string | null
-  rechnung_preset?: string | null
-}
+type ClientRow = LocalClientRow
 
 const clients = ref<ClientRow[]>([])
-const loading = ref(true)
 const removingId = ref<string | null>(null)
 const formOpen = ref(false)
 const editingId = ref<string | null>(null)
 const saving = ref(false)
 
-const form = ref({
+const emptyForm = () => ({
   name: '',
   address_line1: '',
   address_line2: '',
@@ -146,45 +134,30 @@ const form = ref({
   verwendungszweck: '',
   rechnung_preset: '',
 })
+const form = ref(emptyForm())
 
-async function fetchClients(userId: string) {
-  loading.value = true
-  const { data, error } = await supabase
-    .from('clients')
-    .select('id, name, address_line1, address_line2, company_line1, company_line2, company_line3, phone, email, leistungsbeschreibung, verwendungszweck, rechnung_preset')
-    .eq('user_id', userId)
-    .order('name')
-
-  if (error) {
-    console.error('Failed to load clients:', error.message)
-    clients.value = []
-  } else {
-    clients.value = (data ?? []) as ClientRow[]
-  }
-  loading.value = false
+function displayName(c: ClientRow): string {
+  return c.name || [c.company_line1, c.company_line2, c.company_line3].filter(Boolean).join(' · ') || '—'
 }
 
-async function reload() {
-  const { data: auth } = await supabase.auth.getUser()
-  const user = auth?.user
-  if (user) await fetchClients(user.id)
+function fetchClients() {
+  clients.value = localListClients()
 }
 
 function openForm(c?: ClientRow) {
   editingId.value = c?.id ?? null
-  const addr1 = c ? (c.address_line1 ?? c.company_line1 ?? '') : ''
-  const addr2 = c ? (c.address_line2 ?? c.company_line2 ?? '') : ''
-  const displayName = c ? (c.name ?? [c.company_line1, c.company_line2, c.company_line3].filter(Boolean).join(' · ') ?? '') : ''
-  form.value = {
-    name: displayName,
-    address_line1: addr1,
-    address_line2: addr2,
-    phone: c?.phone ?? '',
-    email: c?.email ?? '',
-    leistungsbeschreibung: c?.leistungsbeschreibung ?? '',
-    verwendungszweck: c?.verwendungszweck ?? '',
-    rechnung_preset: c?.rechnung_preset ?? '',
-  }
+  form.value = c
+    ? {
+        name: displayName(c) === '—' ? '' : displayName(c),
+        address_line1: c.address_line1 ?? '',
+        address_line2: c.address_line2 ?? '',
+        phone: c.phone ?? '',
+        email: c.email ?? '',
+        leistungsbeschreibung: c.leistungsbeschreibung ?? '',
+        verwendungszweck: c.verwendungszweck ?? '',
+        rechnung_preset: c.rechnung_preset ?? '',
+      }
+    : emptyForm()
   formOpen.value = true
 }
 
@@ -193,101 +166,44 @@ function closeForm() {
   editingId.value = null
 }
 
-async function saveClient() {
-  const { data: auth } = await supabase.auth.getUser()
-  const user = auth?.user
-  if (!user) return
-
+function saveClient() {
   saving.value = true
-  try {
-    const payload = {
-      user_id: user.id,
-      name: form.value.name.trim(),
-      address_line1: form.value.address_line1.trim(),
-      address_line2: form.value.address_line2.trim(),
-      phone: form.value.phone.trim() || null,
-      email: form.value.email.trim() || null,
-      leistungsbeschreibung: form.value.leistungsbeschreibung.trim() || null,
-      verwendungszweck: form.value.verwendungszweck.trim() || null,
-      rechnung_preset: form.value.rechnung_preset || null,
-    }
-
-    if (editingId.value) {
-      const { error } = await supabase
-        .from('clients')
-        .update(payload)
-        .eq('id', editingId.value)
-        .eq('user_id', user.id)
-      if (error) throw error
-    } else {
-      const { error } = await supabase.from('clients').insert(payload)
-      if (error) throw error
-    }
-    closeForm()
-    await fetchClients(user.id)
-  } catch (e) {
-    console.error('Save client:', e)
-    alert('Fehler: ' + (e instanceof Error ? e.message : String(e)))
-  } finally {
-    saving.value = false
-  }
+  localSaveClient({
+    ...(editingId.value ? { id: editingId.value } : {}),
+    name: form.value.name.trim(),
+    address_line1: form.value.address_line1.trim(),
+    address_line2: form.value.address_line2.trim(),
+    phone: form.value.phone.trim() || null,
+    email: form.value.email.trim() || null,
+    leistungsbeschreibung: form.value.leistungsbeschreibung.trim() || null,
+    verwendungszweck: form.value.verwendungszweck.trim() || null,
+    rechnung_preset: form.value.rechnung_preset || null,
+  })
+  saving.value = false
+  closeForm()
+  fetchClients()
 }
 
-async function remove(c: ClientRow) {
-  const { data: auth } = await supabase.auth.getUser()
-  const user = auth?.user
-  if (!user) return
-
-  const { count } = await supabase
-    .from('invoices')
-    .select('*', { count: 'exact', head: true })
-    .eq('client_id', c.id)
-
-  if (count && count > 0) {
-    if (!confirm(`Kunde «${c.name}» hat ${count} Rechnung(en). Trotzdem löschen?`)) return
-  } else if (!confirm(`Kunde «${c.name}» wirklich löschen?`)) return
-
+function remove(c: ClientRow) {
+  const count = localCountInvoicesForClient(c.id)
+  const msg = count > 0
+    ? `Kunde «${c.name}» hat ${count} Rechnung(en). Trotzdem löschen?`
+    : `Kunde «${c.name}» wirklich löschen?`
+  if (!confirm(msg)) return
   removingId.value = c.id
-  const { error } = await supabase
-    .from('clients')
-    .delete()
-    .eq('id', c.id)
-    .eq('user_id', user.id)
-
+  localDeleteClient(c.id)
   removingId.value = null
-  if (error) {
-    alert('Löschen fehlgeschlagen: ' + error.message)
-    return
-  }
-  await fetchClients(user.id)
+  fetchClients()
 }
 
-onMounted(async () => {
-  const { data: auth } = await supabase.auth.getUser()
-  const user = auth?.user
-  if (user) await fetchClients(user.id)
-})
+onMounted(fetchClients)
 </script>
 
 <style scoped>
 .page { padding: 16px; }
-.flex.between {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 12px;
-  gap: 8px;
-  flex-wrap: wrap;
-}
+.flex.between { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; gap: 8px; flex-wrap: wrap; }
 .actions { display: flex; gap: 8px; }
-.btn {
-  padding: 6px 10px;
-  border: 1px solid #e5e7eb;
-  border-radius: 6px;
-  background: #fff;
-  cursor: pointer;
-  text-decoration: none;
-}
+.btn { padding: 6px 10px; border: 1px solid #e5e7eb; border-radius: 6px; background: #fff; cursor: pointer; text-decoration: none; }
 .btn.primary { border-color: #3b82f6; color: #3b82f6; }
 .btn.danger { border-color: #ef4444; color: #ef4444; }
 .btn.link { border-color: #3b82f6; color: #3b82f6; }
@@ -299,18 +215,8 @@ onMounted(async () => {
 .client-cards { display: none; }
 @media (max-width: 640px) {
   .tbl-desktop { display: none; }
-  .client-cards {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-  }
-  .client-card {
-    background: #fff;
-    border: 1px solid #e5e7eb;
-    border-radius: 8px;
-    padding: 1rem;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-  }
+  .client-cards { display: flex; flex-direction: column; gap: 1rem; }
+  .client-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 1rem; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
   .card-row { padding: 0.5rem 0; border-bottom: 1px solid #f3f4f6; }
   .card-row:last-child { border-bottom: none; }
   .card-label { display: inline-block; min-width: 4rem; color: #6b7280; font-size: 0.875rem; }
@@ -318,34 +224,11 @@ onMounted(async () => {
   .card-actions .btn { min-height: 44px; flex: 1; }
 }
 
-/* Modal */
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.4);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-  padding: 1rem;
-}
-.modal {
-  background: #fff;
-  border-radius: 8px;
-  padding: 1.5rem;
-  max-width: 420px;
-  width: 100%;
-  max-height: 90vh;
-  overflow-y: auto;
-}
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 1rem; }
+.modal { background: #fff; border-radius: 8px; padding: 1.5rem; max-width: 420px; width: 100%; max-height: 90vh; overflow-y: auto; }
 .modal h3 { margin: 0 0 1rem 0; }
 .form-group { margin-bottom: 1rem; }
 .form-group label { display: block; margin-bottom: 0.25rem; font-weight: 500; }
-.form-group input, .form-group select {
-  width: 100%;
-  padding: 0.5rem;
-  border: 1px solid #e5e7eb;
-  border-radius: 6px;
-}
+.form-group input, .form-group select { width: 100%; padding: 0.5rem; border: 1px solid #e5e7eb; border-radius: 6px; }
 .modal-actions { display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1.5rem; }
 </style>

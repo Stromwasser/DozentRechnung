@@ -24,7 +24,7 @@
         </div>
       </div>
       <div class="actions">
-        <button class="btn" @click="regenerate" :disabled="regenerating">
+        <button class="btn primary" @click="regenerate" :disabled="regenerating">
           {{ regenerating ? '… Erstelle PDF' : 'PDF neu erstellen' }}
         </button>
       </div>
@@ -35,7 +35,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { supabase } from '@/lib/supabaseClient'
+import { localGetInvoiceById, localGetClientById, localGetProfile } from '@/lib/localStore'
 import { generateAndStoreInvoicePdf } from '@/composables/useInvoicePdf'
 import InvoicePreview from '@/components/InvoicePreview.vue'
 
@@ -56,51 +56,18 @@ const invoice = ref<Invoice | null>(null)
 const items = computed(() => invoice.value?.items ?? [])
 
 const invoiceId = route.params.id as string
-const userId = ref<string | null>(null)
 
-onMounted(async () => {
-  const { data: auth } = await supabase.auth.getUser()
-  const user = auth?.user
-  if (!user) {
-    error.value = 'Nicht eingeloggt.'
-    loading.value = false
-    return
-  }
-  userId.value = user.id
-
-  const { data: invRow, error: invErr } = await supabase
-    .from('invoices')
-    .select('id, number, date, course_overview, total, client_id, clients(name, address_line1, address_line2, phone, email, leistungsbeschreibung, verwendungszweck, rechnung_preset, company_line1, company_line2, company_line3)')
-    .eq('id', invoiceId)
-    .eq('user_id', user.id)
-    .single()
-
-  if (invErr || !invRow) {
-    error.value = invErr?.message ?? 'Rechnung nicht gefunden.'
+onMounted(() => {
+  const invRow = localGetInvoiceById(invoiceId)
+  if (!invRow) {
+    error.value = 'Rechnung nicht gefunden.'
     loading.value = false
     return
   }
 
-  const { data: itemsRows } = await supabase
-    .from('invoice_items')
-    .select('date, hours, rate, course, amount')
-    .eq('invoice_id', invoiceId)
-    .order('date')
-
-  const { data: profile } = await supabase
-    .from('user_profile')
-    .select('name, address_line1, address_line2, phone, email, tax_number, iban, bic')
-    .eq('id', user.id)
-    .single()
-
-  if (!profile) {
-    error.value = 'Profil nicht gefunden.'
-    loading.value = false
-    return
-  }
-
-  const c = Array.isArray(invRow.clients) ? invRow.clients[0] : invRow.clients
+  const c = localGetClientById(invRow.client_id)
   const clientName = c?.name ?? [c?.company_line1, c?.company_line2, c?.company_line3].filter(Boolean).join(' · ') ?? ''
+  const profile = (localGetProfile() as Record<string, string | undefined> | null) ?? {}
 
   provider.value = {
     name: profile.name ?? '',
@@ -120,48 +87,32 @@ onMounted(async () => {
     phone: c?.phone ?? '',
     email: c?.email ?? '',
     leistungsbeschreibung: c?.leistungsbeschreibung ?? '',
-    verwendungszweck: c?.verwendungszweck ?? null,
+    verwendungszweck: c?.verwendungszweck ?? '',
     rechnung_preset: c?.rechnung_preset ?? '',
   }
 
-  const courseOverview = (invRow.course_overview || '').trim()
   invoice.value = {
     number: invRow.number,
     date: invRow.date,
-    courseOverview,
-    items: (itemsRows ?? []).map((r: { date: string; hours: number; rate: number; course?: string; amount?: number }) => {
-      let hours = Number(r.hours) || 0
-      let rate = Number(r.rate) || 0
-      const amount = Number(r.amount) || 0
-      if (amount && (hours === 0 || rate === 0)) {
-        if (rate > 0) hours = amount / rate
-        else if (hours > 0) rate = amount / hours
-        else { hours = 1; rate = amount }
-      }
-      return {
-        date: r.date,
-        hours,
-        rate,
-        course: (r.course || '').trim(),
-      }
-    }),
+    courseOverview: (invRow.course_overview || '').trim(),
+    items: invRow.items.map((r) => ({
+      date: r.date,
+      hours: r.hours,
+      rate: r.rate,
+      course: (r.course || '').trim(),
+    })),
   }
 
   loading.value = false
 })
 
 async function regenerate() {
-  if (!userId.value || !invoice.value) return
+  if (!invoice.value) return
   regenerating.value = true
   try {
-    await generateAndStoreInvoicePdf({
-      userId: userId.value,
-      invoiceId,
-      invoiceNumber: invoice.value.number,
-    })
-    router.replace({ path: '/invoices', query: { _: Date.now() } })
+    await generateAndStoreInvoicePdf({ invoiceId, invoiceNumber: invoice.value.number })
+    router.replace('/invoices')
   } catch (e) {
-    console.error('Regenerate PDF:', e)
     alert('Fehler: ' + (e instanceof Error ? e.message : String(e)))
   } finally {
     regenerating.value = false
@@ -170,13 +121,12 @@ async function regenerate() {
 </script>
 
 <style scoped>
-.preview-wrap {
-  margin: 1rem 0;
-  padding: 1rem;
-  background: #f5f5f5;
-  border-radius: 8px;
-}
+.page { padding: 16px; }
+.flex.between { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
+.preview-wrap { margin: 1rem 0; padding: 1rem; background: #f5f5f5; border-radius: 8px; }
 .hint { color: #666; margin-bottom: 1rem; }
 .actions { margin-top: 1rem; }
 .error { color: #c00; margin-bottom: 1rem; }
+.btn { padding: 6px 12px; border: 1px solid #e5e7eb; border-radius: 6px; background: #fff; cursor: pointer; text-decoration: none; }
+.btn.primary { background: #2563eb; color: white; border-color: #2563eb; }
 </style>
